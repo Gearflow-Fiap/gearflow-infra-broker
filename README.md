@@ -42,6 +42,22 @@ As portas publicadas ficam restritas à máquina local. Cada integrante executa 
 
 ## Operação
 
+## Validação local automatizada
+
+Com o broker iniciado e PowerShell 7 disponível:
+
+```powershell
+pwsh -File scripts/Test-Broker.ps1
+# Opcional: reinicia o broker inteiro para testar persistência.
+pwsh -File scripts/Test-Broker.ps1 -RestartBroker
+```
+
+O script lê as credenciais da configuração Compose sem exibi-las, cria um vhost temporário, replica a topologia e verifica publicação, conteúdo, requeue e encaminhamento para a DLQ. Ao terminar, remove apenas o vhost criado pelo teste. Requer o usuário administrativo local. Se o processo for interrompido ou o broker ficar indisponível durante a limpeza, pode restar um vhost com prefixo `gearflow-smoke-` para revisão manual.
+
+O parâmetro `-RestartBroker` interrompe brevemente todas as conexões deste broker; use no ambiente local sem trabalho concorrente. O teste utiliza a API HTTP de gerenciamento, não um cliente AMQP dos microsserviços. Ele não valida Outbox, publisher confirms AMQP, idempotência de negócio ou Saga. Veja [resultado da validação](docs/local-validation.md).
+
+### Comandos de operação
+
 ```powershell
 docker compose ps
 docker compose logs --tail 100 rabbitmq
