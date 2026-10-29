@@ -1,0 +1,18 @@
+{
+  "vhosts": [{ "name": "gearflow" }],
+  "exchanges": [
+    { "name": "gearflow.events", "vhost": "gearflow", "type": "topic", "durable": true, "auto_delete": false, "internal": false, "arguments": {} },
+    { "name": "gearflow.dead-letter", "vhost": "gearflow", "type": "direct", "durable": true, "auto_delete": false, "internal": false, "arguments": {} }
+  ],
+  "queues": [
+    { "name": "gearflow.budget.order-created.v1", "vhost": "gearflow", "durable": true, "auto_delete": false, "arguments": { "x-queue-type": "classic" } },
+    { "name": "gearflow.budget.order-created.v1.dlq", "vhost": "gearflow", "durable": true, "auto_delete": false, "arguments": { "x-queue-type": "classic" } }
+  ],
+  "bindings": [
+    { "source": "gearflow.events", "vhost": "gearflow", "destination": "gearflow.budget.order-created.v1", "destination_type": "queue", "routing_key": "os.order-created.v1", "arguments": {} },
+    { "source": "gearflow.dead-letter", "vhost": "gearflow", "destination": "gearflow.budget.order-created.v1.dlq", "destination_type": "queue", "routing_key": "budget.order-created.v1.failed", "arguments": {} }
+  ],
+  "policies": [
+    { "name": "budget-order-created-dead-letter", "vhost": "gearflow", "pattern": "^gearflow\\.budget\\.order-created\\.v1$", "apply-to": "queues", "definition": { "dead-letter-exchange": "gearflow.dead-letter", "dead-letter-routing-key": "budget.order-created.v1.failed" }, "priority": 10 }
+  ]
+}

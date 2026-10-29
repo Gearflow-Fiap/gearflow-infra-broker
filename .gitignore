@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+*.log
+.idea/
+.vscode/
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
