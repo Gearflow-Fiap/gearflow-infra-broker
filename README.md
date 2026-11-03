@@ -12,20 +12,15 @@ A Saga, regras de negócio, Outbox e consumidores pertencem aos microsserviços.
 
 ## Executar localmente
 
-Pré-requisitos: Docker com containers Linux e Docker Compose.
+Pré-requisitos: Docker com containers Linux, Docker Compose e PowerShell 7 (`pwsh`).
 
 Na raiz deste repositório, no PowerShell:
 
 ```powershell
-Copy-Item .env.example .env
-# Edite .env e escolha uma senha local antes de continuar.
-docker compose config --quiet
-docker compose up -d --wait
-docker compose exec -T rabbitmq rabbitmqctl import_definitions /etc/rabbitmq/definitions.json
-docker compose exec -T rabbitmq rabbitmqctl list_queues -p gearflow name messages consumers
+pwsh -File scripts/Start-Broker.ps1
 ```
 
-O import é feito após o boot para permitir a criação inicial de usuário e vhost pelas variáveis de ambiente. Execute-o novamente após alterar `definitions.json`. Não cria consumidores nem publica eventos. Recursos removidos do arquivo não são automaticamente removidos do broker; mudanças incompatíveis exigem migração planejada.
+O script cria `.env` com senha aleatória apenas quando não existe configuração local nem credenciais completas no ambiente. Preserva um `.env` existente, valida os arquivos, inicia o broker, aguarda a API e importa a topologia via API de gerenciamento. Pode ser executado novamente após alterar `definitions.json`. Não remove volumes, não cria consumidores nem publica eventos. Recursos removidos do arquivo não são automaticamente removidos do broker; mudanças incompatíveis exigem migração planejada.
 
 Painel: [http://localhost:15672](http://localhost:15672), usando usuário e senha do `.env`.
 
@@ -40,7 +35,13 @@ Containers na rede deste Compose usam host `rabbitmq` e porta `5672`. Serviços 
 
 As portas publicadas ficam restritas à máquina local. Cada integrante executa um broker próprio; testes conjuntos exigem os serviços conectados ao mesmo broker.
 
-## Operação
+## Integração contínua
+
+O workflow `.github/workflows/ci.yml` executa em PRs, pushes na `main` e disparo manual. Valida JSON, sintaxe PowerShell e Compose, sobe um RabbitMQ temporário, verifica inicialização repetida e executa o teste de roteamento, persistência e DLQ. O teste usa HTTP de gerenciamento; não substitui integração AMQP dos serviços.
+
+O runner usa credenciais aleatórias temporárias, sem secrets cadastrados. Ao finalizar, remove containers e volumes somente do ambiente descartável do CI; localmente os dados continuam preservados. Logs de diagnóstico aparecem em caso de falha. Não há deploy neste workflow.
+
+Após publicar o workflow, configure `Validate RabbitMQ` como check obrigatório na proteção da branch, se desejado. O arquivo sozinho não altera as proteções do GitHub. As filas atuais continuam sendo exemplos provisórios, não contratos de negócio aprovados.
 
 ## Validação local automatizada
 
@@ -75,6 +76,9 @@ compose.yaml                Ambiente local
 .env.example                Variáveis de exemplo
 rabbitmq/rabbitmq.conf      Configuração do broker
 rabbitmq/definitions.json   Topologia inicial sem usuários/senhas
+scripts/Start-Broker.ps1    Inicialização local em um comando
+scripts/Test-Broker.ps1     Validação isolada do broker
+.github/workflows/ci.yml    Validação automatizada de PRs
 docs/messaging.md           Convenções e responsabilidades
 k8s/README.md               Próxima etapa de implantação
 ```
@@ -85,7 +89,7 @@ k8s/README.md               Próxima etapa de implantação
 - Integrar publicação/consumo reais com Outbox e idempotência.
 - Definir retentativas limitadas e procedimento de reprocessamento.
 - Fixar versão patch/digest validada da imagem antes do ambiente compartilhado; a tag `4.2-management` acompanha patches dessa linha.
-- Implementar Kubernetes, CI/CD, usuários por serviço e monitoramento.
+- Implementar Kubernetes, CD, usuários por serviço e monitoramento.
 - Validar fluxo completo e compensações da Saga.
 
 Referências: [definições](https://www.rabbitmq.com/docs/definitions), [confiabilidade](https://www.rabbitmq.com/docs/reliability), [confirmações](https://www.rabbitmq.com/docs/confirms).
