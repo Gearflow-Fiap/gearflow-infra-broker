@@ -1,6 +1,14 @@
 # GearFlow — Infraestrutura do broker
 
-Configuração do RabbitMQ para comunicação entre OS, Budget, Operation e Inventory na Fase 4.
+Infraestrutura compartilhada da Fase 4: cluster EKS e RabbitMQ para OS, Budget, Operation e Inventory.
+
+## Organizacao do cluster compartilhado
+
+- [`infra/cluster/`](infra/cluster/README.md): Terraform do EKS, rede e workers para os quatro servicos e o broker.
+- [`k8s/`](k8s/README.md): recursos Kubernetes do RabbitMQ dentro desse cluster.
+- Repositorios dos microsservicos: imagens e deploys independentes no cluster existente.
+
+Alterar o RabbitMQ nao recria o cluster. O CI de Terraform valida apenas alteracoes no diretorio de infraestrutura; nenhum workflow aplica Terraform automaticamente. Provisionamento depende da verificacao de IAM, versao EKS, acesso e state do AWS Academy.
 
 ## Escopo atual
 
@@ -8,7 +16,11 @@ Configuração do RabbitMQ para comunicação entre OS, Budget, Operation e Inve
 - Topologia inicial proposta para `OrderCreated`, com fila do Budget e fila de erro.
 - Configuração sem credenciais versionadas.
 
-A Saga, regras de negócio, Outbox e consumidores pertencem aos microsserviços. Este repositório não implementa essas funcionalidades. Kubernetes, deploy automático e alta disponibilidade ainda não estão implementados.
+A Saga, regras de negócio, Outbox e consumidores pertencem aos microsserviços. Este repositório não implementa essas funcionalidades. Terraform do cluster e manifestos Kubernetes do broker estão preparados, mas ainda não foram aplicados na AWS. Deploy automático e alta disponibilidade ainda não estão implementados.
+
+A imagem está fixada em `4.2.9-management` e digest OCI, iguais no Compose e Kubernetes. No ambiente compartilhado, os manifestos exigem TLS na porta 5671, restringem o painel ao loopback do Pod e incluem NetworkPolicy. O Terraform habilita o enforcement no addon VPC CNI; a eficácia da política ainda precisa de validação no EKS. Usuários e permissões dos quatro serviços são preparados por script, sem senhas no Git. Veja [implantação compartilhada](k8s/README.md).
+
+Evidências e limites: [validação local da configuração compartilhada](docs/shared-validation.md). O plano Terraform anterior está desatualizado e precisa ser gerado novamente antes de provisionar.
 
 ## Executar localmente
 
@@ -37,7 +49,7 @@ As portas publicadas ficam restritas à máquina local. Cada integrante executa 
 
 ## Integração contínua
 
-O workflow `.github/workflows/ci.yml` executa em PRs, pushes na `main` e disparo manual. Valida JSON, sintaxe PowerShell e Compose, sobe um RabbitMQ temporário, verifica inicialização repetida e executa o teste de roteamento, persistência e DLQ. O teste usa HTTP de gerenciamento; não substitui integração AMQP dos serviços.
+O workflow `.github/workflows/ci.yml` executa em PRs, pushes na `main` e disparo manual. Valida JSON, sintaxe PowerShell, Compose e renderização Kustomize; sobe um RabbitMQ temporário, verifica inicialização repetida e testa roteamento, persistência e DLQ. Também executa um container isolado para verificar TLS, usuários/permissões, preservação de senhas e painel no loopback. As verificações de mensagens usam HTTP de gerenciamento; não substituem integração AMQP dos serviços nem testes de rede no EKS.
 
 O runner usa credenciais aleatórias temporárias, sem secrets cadastrados. Ao finalizar, remove containers e volumes somente do ambiente descartável do CI; localmente os dados continuam preservados. Logs de diagnóstico aparecem em caso de falha. Não há deploy neste workflow.
 
@@ -78,6 +90,9 @@ rabbitmq/rabbitmq.conf      Configuração do broker
 rabbitmq/definitions.json   Topologia inicial sem usuários/senhas
 scripts/Start-Broker.ps1    Inicialização local em um comando
 scripts/Test-Broker.ps1     Validação isolada do broker
+scripts/New-BrokerTls.ps1   Certificado TLS para o laboratório
+scripts/Set-BrokerServiceUsers.ps1  Usuários e ACL dos serviços
+scripts/Test-SharedBroker.ps1      Teste TLS/ACL descartável
 .github/workflows/ci.yml    Validação automatizada de PRs
 docs/messaging.md           Convenções e responsabilidades
 k8s/README.md               Próxima etapa de implantação
@@ -88,8 +103,8 @@ k8s/README.md               Próxima etapa de implantação
 - Validar contratos e nomes com os quatro serviços.
 - Integrar publicação/consumo reais com Outbox e idempotência.
 - Definir retentativas limitadas e procedimento de reprocessamento.
-- Fixar versão patch/digest validada da imagem antes do ambiente compartilhado; a tag `4.2-management` acompanha patches dessa linha.
-- Implementar Kubernetes, CD, usuários por serviço e monitoramento.
+- Implantar e validar Kubernetes, TLS, usuários e bloqueios de rede no EKS.
+- Implementar CD e monitoramento.
 - Validar fluxo completo e compensações da Saga.
 
 Referências: [definições](https://www.rabbitmq.com/docs/definitions), [confiabilidade](https://www.rabbitmq.com/docs/reliability), [confirmações](https://www.rabbitmq.com/docs/confirms).

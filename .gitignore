@@ -9,3 +9,10 @@
 *.tfstate.*
 *.tfvars
 !*.tfvars.example
+*.tfplan
+*.tfvars.json
+crash.log
+.local/
+*.key
+*.pfx
+*.p12

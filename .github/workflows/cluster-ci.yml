@@ -1,0 +1,27 @@
+name: Cluster CI
+on:
+  pull_request:
+    paths: ['infra/cluster/**', '.github/workflows/cluster-ci.yml']
+  push:
+    branches: [main]
+    paths: ['infra/cluster/**', '.github/workflows/cluster-ci.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  terraform-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: infra/cluster
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.8
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false -input=false
+      - run: terraform validate

@@ -36,6 +36,7 @@ jobs:
       - name: Validate JSON and PowerShell syntax
         run: |
           Get-Content rabbitmq/definitions.json -Raw | ConvertFrom-Json | Out-Null
+          Get-Content rabbitmq/service-permissions.json -Raw | ConvertFrom-Json | Out-Null
           foreach ($script in Get-ChildItem scripts -Filter *.ps1) {
             $tokens = $null
             $parseErrors = $null
@@ -45,6 +46,11 @@ jobs:
           docker compose config --quiet
           if ($LASTEXITCODE -ne 0) { throw 'Invalid Compose configuration.' }
 
+      - name: Validate Kubernetes manifests
+        run: |
+          kubectl kustomize k8s | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Invalid Kubernetes manifests.' }
+
       - name: Start broker and import topology
         run: ./scripts/Start-Broker.ps1
 
@@ -53,6 +59,9 @@ jobs:
 
       - name: Test routing, persistence and dead lettering
         run: ./scripts/Test-Broker.ps1 -RestartBroker
+
+      - name: Test shared broker TLS and service permissions
+        run: ./scripts/Test-SharedBroker.ps1
 
       - name: Diagnostics on failure
         if: failure()

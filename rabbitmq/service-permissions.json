@@ -1,0 +1,9 @@
+{
+  "vhost": "gearflow",
+  "users": [
+    { "name": "gearflow_os", "configure": "^$", "write": "^gearflow\\.events$", "read": "^gearflow\\.os\\.(?!.*\\.dlq$).+$" },
+    { "name": "gearflow_budget", "configure": "^$", "write": "^gearflow\\.events$", "read": "^gearflow\\.budget\\.(?!.*\\.dlq$).+$" },
+    { "name": "gearflow_operation", "configure": "^$", "write": "^gearflow\\.events$", "read": "^gearflow\\.operation\\.(?!.*\\.dlq$).+$" },
+    { "name": "gearflow_inventory", "configure": "^$", "write": "^gearflow\\.events$", "read": "^gearflow\\.inventory\\.(?!.*\\.dlq$).+$" }
+  ]
+}
