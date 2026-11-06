@@ -16,7 +16,7 @@ Alterar o RabbitMQ nao recria o cluster. O CI de Terraform valida apenas alterac
 - Topologia inicial proposta para `OrderCreated`, com fila do Budget e fila de erro.
 - Configuração sem credenciais versionadas.
 
-A Saga, regras de negócio, Outbox e consumidores pertencem aos microsserviços. Este repositório não implementa essas funcionalidades. O cluster EKS foi criado via Terraform, com dois workers Ready. RabbitMQ implantado com EBS de 10 GiB, TLS e usuários por serviço; comunicação AMQP, permissões, NetworkPolicy, DLQ e persistência após recriação do Pod foram validadas. Deploy automático e alta disponibilidade ainda não estão implementados.
+A Saga, regras de negócio, Outbox e consumidores pertencem aos microsserviços. Este repositório não implementa essas funcionalidades. O cluster EKS foi criado via Terraform, com dois workers Ready. RabbitMQ implantado com EBS de 10 GiB, TLS e usuários por serviço; comunicação AMQP, permissões, NetworkPolicy, DLQ e persistência após recriação do Pod foram validadas. O workflow de CD está preparado e seu script foi validado no cluster; falta publicar na main e confirmar a execução no GitHub. Alta disponibilidade não está implementada.
 
 A imagem está fixada em `4.2.9-management` e digest OCI, iguais no Compose e Kubernetes. No ambiente compartilhado, os manifestos exigem TLS na porta 5671, restringem o painel ao loopback do Pod e incluem NetworkPolicy. Foram testados acesso permitido com ambas as labels e bloqueio na ausência da label do Pod ou namespace. Usuários e permissões dos quatro serviços são preparados por script, sem senhas no Git. Veja [implantação compartilhada](k8s/README.md).
 
@@ -52,6 +52,10 @@ As portas publicadas ficam restritas à máquina local. Cada integrante executa 
 O workflow `.github/workflows/ci.yml` executa em PRs, pushes na `main` e disparo manual. Valida JSON, sintaxe PowerShell, Compose e renderização Kustomize; sobe um RabbitMQ temporário, verifica inicialização repetida e testa roteamento, persistência e DLQ. Também executa um container isolado para verificar TLS, usuários/permissões, preservação de senhas e painel no loopback. As verificações de mensagens usam HTTP de gerenciamento; não substituem integração AMQP dos serviços nem testes de rede no EKS.
 
 O runner usa credenciais aleatórias temporárias, sem secrets cadastrados. Ao finalizar, remove containers e volumes somente do ambiente descartável do CI; localmente os dados continuam preservados. Logs de diagnóstico aparecem em caso de falha. Não há deploy neste workflow.
+
+O workflow `broker-cd.yml`, chamado GearFlow CD, coordena EKS e RabbitMQ depois do CI bem-sucedido na main ou por disparo manual. Primeiro gera o plano Terraform com state HCP. Sem mudanças, segue para o broker; com mudanças, aguarda um disparo manual vinculado ao plano revisado. Depois do apply aprovado, atualiza o RabbitMQ. Veja [pipeline de infraestrutura e aprovação](docs/infra-cd.md) e [acesso e recuperação do job do broker](docs/cd.md).
+
+O state do EKS já foi migrado para o HCP Terraform, organização `gearflowfiapmurilo`, workspace `gearflow-fase4-cluster`, com execução local e locking. A integração usa os Secrets `TF_API_TOKEN` e `TF_CLUSTER_CONFIG_JSON`, além das credenciais AWS temporárias. Veja [migração e operação do state remoto](docs/hcp-state.md).
 
 Após publicar o workflow, configure `Validate RabbitMQ` como check obrigatório na proteção da branch, se desejado. O arquivo sozinho não altera as proteções do GitHub. As filas atuais continuam sendo exemplos provisórios, não contratos de negócio aprovados.
 
@@ -104,7 +108,7 @@ k8s/README.md               Próxima etapa de implantação
 - Integrar publicação/consumo reais com Outbox e idempotência.
 - Definir retentativas limitadas e procedimento de reprocessamento.
 - Integrar os serviços reais ao RabbitMQ implantado, distribuindo CA e credenciais individuais.
-- Implementar CD e monitoramento.
+- Publicar e validar a primeira execução do CD no GitHub; implementar monitoramento.
 - Validar fluxo completo e compensações da Saga.
 
 Referências: [definições](https://www.rabbitmq.com/docs/definitions), [confiabilidade](https://www.rabbitmq.com/docs/reliability), [confirmações](https://www.rabbitmq.com/docs/confirms).

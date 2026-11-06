@@ -148,6 +148,10 @@ Para repetir as verificações reais do cluster implantado, use `pwsh -File scri
 
 Para incluir a recriação do Pod e comprovar persistência, use `pwsh -File scripts/Test-ClusterBroker.ps1 -RestartBroker` somente numa janela sem consumidores. Esse parâmetro interrompe as conexões do broker. Ele não exclui o PVC. As credenciais administrativas geradas nesta implantação estão em `.local/cluster-admin.json`; senhas dos serviços em `.local/service-credentials.json`. Nenhum desses arquivos deve ser versionado ou compartilhado integralmente com os serviços.
 
+## Deploy automatizado
+
+O job do broker no coordenador GearFlow CD aplica estes manifestos depois da verificação/aplicação aprovada da infraestrutura, usando Secrets/usuários já provisionados. Configuração de acesso ao EKS, credenciais Academy e recuperação em falhas estão em [docs/cd.md](../docs/cd.md); o fluxo Terraform está em [docs/infra-cd.md](../docs/infra-cd.md). Não destruir o ambiente enquanto houver deploy em execução.
+
 ## Encerrar o laboratório
 
 O EBS de 10 GiB usa `Retain`. Ele contém os dados do RabbitMQ e pode continuar gerando custo depois de excluir o PVC ou cluster. O script `Destroy-Cluster.ps1` bloqueia ao encontrar PVC/PV para exigir essa revisão.

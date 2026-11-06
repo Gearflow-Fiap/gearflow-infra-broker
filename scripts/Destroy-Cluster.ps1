@@ -3,7 +3,7 @@
 .SYNOPSIS
 Gera uma previa de destruicao; somente -Execute -ConfirmClusterName NOME aplica.
 .DESCRIPTION
-Usa exclusivamente o state deste repositorio. Nao remove volumes de aplicacoes
+Usa exclusivamente o state do workspace configurado neste repositorio. Nao remove volumes de aplicacoes
 automaticamente. Bloqueia se encontrar PVCs, PVs, LoadBalancers ou Ingresses.
 #>
 param(
@@ -73,7 +73,7 @@ try {
             throw 'Revise/remova esses recursos e seus volumes/load balancers antes de destruir o cluster. Nenhum dado foi removido pelo script.'
         }
     }
-    Write-Host "Alvo: $clusterName / $region. Gerando plano de destruicao do state local."
+    Write-Host "Alvo: $clusterName / $region. Gerando plano de destruicao do workspace configurado."
     $planPath = Join-Path $localDirectory 'cluster-destroy.tfplan'
     $null = Invoke-Checked terraform @("-chdir=$clusterDirectory", 'plan', '-destroy', "-var-file=$variablePath", "-out=$planPath", '-input=false', '-no-color')
     $planText = Invoke-Checked terraform @("-chdir=$clusterDirectory", 'show', '-json', $planPath)

@@ -75,7 +75,13 @@ Esperado: WRITE_OK e READ_OK em Pods diferentes, com o mesmo PVC. Antes da limpe
 
 ## State e pipelines
 
-Inicialmente state local, ignorado no Git: um unico operador deve executar Terraform e guardar o state com seguranca. Nao executar em maquinas diferentes com states independentes. Antes de CD/apply no GitHub, configurar backend remoto compartilhado com locking (S3 ou alternativa permitida pelo Academy) e migrar o state. Nunca colocar state/plans em Git.
+State migrado para HCP Terraform: organizacao gearflowfiapmurilo, workspace gearflow-fase4-cluster, Execution Mode local. O arquivo backend.tf conecta todos os operadores ao mesmo state remoto com locking. Local significa que plan/apply executam na maquina ou runner; o HCP armazena o state. Nao criar outro workspace/state para o mesmo cluster.
+
+Na migracao, o workspace estava vazio. Foi preservado backup em .local/state-backups e comparado o conteudo completo de resources e outputs antes/depois: identico, com 12 instancias gerenciadas. O HCP iniciou nova linhagem/serial; os recursos AWS nao foram alterados. O Terraform validate passou com o novo backend. Backups locais nao sao mais a fonte de verdade; nao restaurar por cima do workspace sem revisao.
+
+Novos operadores precisam de acesso ao workspace, terraform login e terraform init neste diretorio. A autenticacao HCP e separada do perfil AWS Academy. No GitHub, os Secrets TF_API_TOKEN e TF_CLUSTER_CONFIG_JSON fornecem acesso ao state e parametros do cluster, restritos ao repositorio de infraestrutura. Nao enviar esses valores pelo chat nem coloca-los no backend.tf. O coordenador GearFlow CD e o workflow reutilizavel Cluster CD estao preparados; falta a publicacao/primeira execucao remota. Detalhes em ../../docs/hcp-state.md e ../../docs/infra-cd.md.
+
+O CD do RabbitMQ usa kubectl e nao acessa o state; veja ../../docs/cd.md. Nunca colocar state/plans em Git.
 
 `cluster-ci.yml` apenas fmt/init/validate, sem credenciais AWS e sem apply. Mudancas em `infra/cluster/**` disparam esse CI. O CI do broker e independente. Futuro CD de cluster deve usar plan revisado; CD do broker e dos servicos aponta ao cluster existente.
 
