@@ -56,7 +56,7 @@ spec:
             failureThreshold: 30
           readinessProbe:
             exec:
-              command: [rabbitmq-diagnostics, -q, check_port_connectivity]
+              command: [sh, -ec, "rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_local_alarms"]
             periodSeconds: 15
             timeoutSeconds: 10
           livenessProbe:

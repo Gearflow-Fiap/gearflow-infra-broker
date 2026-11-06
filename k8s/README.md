@@ -1,6 +1,6 @@
 # RabbitMQ compartilhado no EKS — laboratório
 
-Manifestos preparados para EKS convencional, nodes EC2 Linux e EBS CSI (`ebs.csi.aws.com`). Ainda sem deploy AWS. Não assumir compatibilidade com Fargate ou EKS Auto Mode.
+RabbitMQ implantado e validado no EKS convencional, com nodes EC2 Linux e EBS CSI (`ebs.csi.aws.com`). Veja [evidências da etapa 3](../docs/broker-validation.md). Não assumir compatibilidade com Fargate ou EKS Auto Mode.
 
 ## Configuração
 
@@ -16,7 +16,7 @@ O Compose local continua usando 5672 e painel 15672 limitados ao loopback da má
 
 ## Pré-requisitos antes do deploy
 
-1. Aplicar um plano Terraform atualizado. O plano antigo de 11 recursos não inclui o addon VPC CNI com `enableNetworkPolicy=true` e não deve ser aplicado.
+1. Aplicar um plano Terraform atualizado. O cluster utilizado tem EKS 1.35, dois workers e addon VPC CNI com `enableNetworkPolicy=true`.
 2. Confirmar nodes `Ready`, driver EBS ativo e teste de escrita/leitura em PVC.
 3. Confirmar VPC CNI compatível com NetworkPolicy e agente `aws-network-policy-agent` funcionando. O Terraform configura o addon antes dos workers. O modo padrão pode permitir tráfego brevemente durante a inicialização do Pod; TLS e autenticação continuam obrigatórios. Não habilitar modo strict globalmente sem preparar políticas para os demais workloads.
 4. Confirmar contexto e permissões Kubernetes. Namespace/labels não substituem RBAC; somente operadores autorizados devem poder conceder labels de acesso, alterar políticas, executar comandos ou fazer port-forward no broker.
@@ -143,5 +143,15 @@ pwsh -File scripts/Test-SharedBroker.ps1
 ```
 
 Esse teste usa container/volume descartáveis, verifica TLS, ACL cadastrada, preservação de senhas e listeners. Não prova enforcement da NetworkPolicy, cliente AMQP, Saga nem persistência no EKS. Esses testes seguem para a etapa de implantação.
+
+Para repetir as verificações reais do cluster implantado, use `pwsh -File scripts/Test-ClusterBroker.ps1`. Requer `.local/kubeconfig`, `.local/cluster-admin.json`, certificado/CA e acesso ao cluster. O script cria filas com identificador exclusivo, Jobs/Secrets em namespaces temporários e remove esses recursos quando os testes passam. Usa cliente Pika 1.3.2 em imagem Python; precisa de acesso ao registro e ao PyPI. Em caso de falha, preserva os recursos para diagnóstico; revise-os antes de repetir.
+
+Para incluir a recriação do Pod e comprovar persistência, use `pwsh -File scripts/Test-ClusterBroker.ps1 -RestartBroker` somente numa janela sem consumidores. Esse parâmetro interrompe as conexões do broker. Ele não exclui o PVC. As credenciais administrativas geradas nesta implantação estão em `.local/cluster-admin.json`; senhas dos serviços em `.local/service-credentials.json`. Nenhum desses arquivos deve ser versionado ou compartilhado integralmente com os serviços.
+
+## Encerrar o laboratório
+
+O EBS de 10 GiB usa `Retain`. Ele contém os dados do RabbitMQ e pode continuar gerando custo depois de excluir o PVC ou cluster. O script `Destroy-Cluster.ps1` bloqueia ao encontrar PVC/PV para exigir essa revisão.
+
+Antes de destruir o cluster, registre o PVC/PV e o volume EBS (o inventário desta implantação está em `.local/rabbitmq-volume.json`). Combine a parada e decida se precisa de backup. Se os dados forem descartáveis, escale o StatefulSet a zero, aguarde o Pod terminar e remova os recursos Kubernetes do broker. O PV retido e o EBS precisam de exclusão explícita, com o volume desanexado e o ID conferido. Só depois execute a destruição Terraform. Não remova volumes por filtro amplo nem presuma que `kubectl delete -k k8s` exclua o disco.
 
 Referências: [TLS RabbitMQ](https://www.rabbitmq.com/docs/ssl), [permissões RabbitMQ](https://www.rabbitmq.com/docs/access-control), [NetworkPolicy no EKS](https://docs.aws.amazon.com/eks/latest/userguide/cni-network-policy-configure.html).

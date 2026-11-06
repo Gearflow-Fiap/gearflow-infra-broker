@@ -16,11 +16,11 @@ Alterar o RabbitMQ nao recria o cluster. O CI de Terraform valida apenas alterac
 - Topologia inicial proposta para `OrderCreated`, com fila do Budget e fila de erro.
 - Configuração sem credenciais versionadas.
 
-A Saga, regras de negócio, Outbox e consumidores pertencem aos microsserviços. Este repositório não implementa essas funcionalidades. Terraform do cluster e manifestos Kubernetes do broker estão preparados, mas ainda não foram aplicados na AWS. Deploy automático e alta disponibilidade ainda não estão implementados.
+A Saga, regras de negócio, Outbox e consumidores pertencem aos microsserviços. Este repositório não implementa essas funcionalidades. O cluster EKS foi criado via Terraform, com dois workers Ready. RabbitMQ implantado com EBS de 10 GiB, TLS e usuários por serviço; comunicação AMQP, permissões, NetworkPolicy, DLQ e persistência após recriação do Pod foram validadas. Deploy automático e alta disponibilidade ainda não estão implementados.
 
-A imagem está fixada em `4.2.9-management` e digest OCI, iguais no Compose e Kubernetes. No ambiente compartilhado, os manifestos exigem TLS na porta 5671, restringem o painel ao loopback do Pod e incluem NetworkPolicy. O Terraform habilita o enforcement no addon VPC CNI; a eficácia da política ainda precisa de validação no EKS. Usuários e permissões dos quatro serviços são preparados por script, sem senhas no Git. Veja [implantação compartilhada](k8s/README.md).
+A imagem está fixada em `4.2.9-management` e digest OCI, iguais no Compose e Kubernetes. No ambiente compartilhado, os manifestos exigem TLS na porta 5671, restringem o painel ao loopback do Pod e incluem NetworkPolicy. Foram testados acesso permitido com ambas as labels e bloqueio na ausência da label do Pod ou namespace. Usuários e permissões dos quatro serviços são preparados por script, sem senhas no Git. Veja [implantação compartilhada](k8s/README.md).
 
-Evidências e limites: [validação local da configuração compartilhada](docs/shared-validation.md). O plano Terraform anterior está desatualizado e precisa ser gerado novamente antes de provisionar.
+Evidências e limites: [validação local](docs/shared-validation.md), [validação do EKS](docs/cluster-validation.md) e [RabbitMQ no EKS](docs/broker-validation.md). O cluster e o volume do broker permanecem ativos e consumindo créditos. Para revisar sua remoção, use `pwsh -File scripts/Destroy-Cluster.ps1`; a exclusão exige opções explícitas e revisão do volume retido, conforme o README de Kubernetes.
 
 ## Executar localmente
 
@@ -103,7 +103,7 @@ k8s/README.md               Próxima etapa de implantação
 - Validar contratos e nomes com os quatro serviços.
 - Integrar publicação/consumo reais com Outbox e idempotência.
 - Definir retentativas limitadas e procedimento de reprocessamento.
-- Implantar e validar Kubernetes, TLS, usuários e bloqueios de rede no EKS.
+- Integrar os serviços reais ao RabbitMQ implantado, distribuindo CA e credenciais individuais.
 - Implementar CD e monitoramento.
 - Validar fluxo completo e compensações da Saga.
 
