@@ -50,7 +50,13 @@ As aplicações devem utilizar a topologia acordada e não declarar recursos inc
 - Separação dos eventos de aprovação e pagamento.
 - Reserva, consumo e liberação de estoque.
 - Retentativas, prazos, mensagens atrasadas e compensações.
-- Política de acesso por serviço e propagação de traces.
+- Refinar permissões de tópico por produtor após definir routing keys e propagação de traces.
+
+## Acesso técnico inicial
+
+`rabbitmq/service-permissions.json` separa os usuários OS, Budget, Operation e Inventory no vhost `gearflow`. Cada um publica somente na exchange `gearflow.events` e lê filas do próprio prefixo `gearflow.<servico>.`, excluindo sufixo `.dlq`. Nenhum possui tags administrativas ou permissão para declarar, excluir ou vincular recursos. A infraestrutura cria a topologia; bibliotecas dos serviços precisam usar recursos existentes.
+
+É uma convenção técnica inicial, sem aprovação dos contratos de negócio. A publicação ainda não restringe routing keys na exchange comum. Revisar junto dos contratos e, se necessário, adicionar permissões de tópico por produtor. Filas novas não são criadas pelo script de usuários. Consulte [acesso, TLS e provisionamento](../k8s/README.md).
 
 ## Verificação manual local
 

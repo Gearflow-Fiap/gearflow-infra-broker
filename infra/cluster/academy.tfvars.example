@@ -1,0 +1,10 @@
+aws_region         = "us-east-1"
+cluster_name       = "gearflow-fase4"
+availability_zones = ["us-east-1a", "us-east-1b"]
+# Substituir por versao standard suportada, ARNs e IP reais verificados no Lab.
+kubernetes_version = "PREENCHER"
+cluster_role_arn   = "arn:aws:iam::ACCOUNT_ID:role/ROLE_CLUSTER"
+node_role_arn      = "arn:aws:iam::ACCOUNT_ID:role/ROLE_NODE"
+admin_cidrs        = ["203.0.113.10/32"]
+node_instance_type = "t3.medium"
+enable_ebs_csi     = false

@@ -2,7 +2,7 @@ name: gearflow-infra-broker
 
 services:
   rabbitmq:
-    image: rabbitmq:4.2-management
+    image: rabbitmq:4.2.9-management@sha256:4e1c1636957aa13c2dbeb8c92606891ac0c396999bb4d7c3a7e3ba38430df7fa
     hostname: gearflow-rabbitmq
     restart: unless-stopped
     environment:

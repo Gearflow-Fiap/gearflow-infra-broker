@@ -1,0 +1,77 @@
+name: Broker CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: broker-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  broker-validation:
+    name: Validate RabbitMQ
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Prepare temporary credentials
+        run: |
+          $password = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(24))
+          Write-Output "::add-mask::$password"
+          "RABBITMQ_USER=gearflow_ci" >> $env:GITHUB_ENV
+          "RABBITMQ_PASSWORD=$password" >> $env:GITHUB_ENV
+
+      - name: Validate JSON and PowerShell syntax
+        run: |
+          Get-Content rabbitmq/definitions.json -Raw | ConvertFrom-Json | Out-Null
+          Get-Content rabbitmq/service-permissions.json -Raw | ConvertFrom-Json | Out-Null
+          foreach ($script in Get-ChildItem scripts -Filter *.ps1) {
+            $tokens = $null
+            $parseErrors = $null
+            $null = [Management.Automation.Language.Parser]::ParseFile($script.FullName, [ref]$tokens, [ref]$parseErrors)
+            if ($parseErrors.Count -gt 0) { throw ($parseErrors | Out-String) }
+          }
+          docker compose config --quiet
+          if ($LASTEXITCODE -ne 0) { throw 'Invalid Compose configuration.' }
+
+      - name: Validate Kubernetes manifests
+        run: |
+          kubectl kustomize k8s | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Invalid Kubernetes manifests.' }
+
+      - name: Test CD access cleanup and topology verification
+        run: python -m unittest discover -s tests -v
+
+      - name: Start broker and import topology
+        run: ./scripts/Start-Broker.ps1
+
+      - name: Verify repeated startup
+        run: ./scripts/Start-Broker.ps1
+
+      - name: Test routing, persistence and dead lettering
+        run: ./scripts/Test-Broker.ps1 -RestartBroker
+
+      - name: Test shared broker TLS and service permissions
+        run: ./scripts/Test-SharedBroker.ps1
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          docker compose ps
+          docker compose logs --no-color --tail 150 rabbitmq
+
+      - name: Remove temporary CI environment
+        if: always()
+        run: docker compose down --volumes --remove-orphans

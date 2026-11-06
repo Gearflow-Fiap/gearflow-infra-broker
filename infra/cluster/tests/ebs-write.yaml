@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gearflow-infra-validation
+  labels:
+    gearflow.io/purpose: ebs-validation
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gearflow-validation-gp3
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp3
+  encrypted: "true"
+  csi.storage.k8s.io/fstype: ext4
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ebs-check
+  namespace: gearflow-infra-validation
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: gearflow-validation-gp3
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ebs-write
+  namespace: gearflow-infra-validation
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 300
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: write
+          image: busybox:1.37.0
+          command: [sh, -ec, "printf 'gearflow-ebs-check-v1\n' > /data/check.txt; sync; echo WRITE_OK"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: ebs-check

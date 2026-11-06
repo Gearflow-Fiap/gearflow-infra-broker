@@ -1,0 +1,93 @@
+name: Cluster CD
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        required: true
+        type: string
+      operation:
+        default: plan
+        type: string
+      expected_plan_sha:
+        default: ''
+        type: string
+      confirm_cluster:
+        default: ''
+        type: string
+      allow_destructive:
+        default: false
+        type: boolean
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+      AWS_SESSION_TOKEN:
+        required: true
+      TF_API_TOKEN:
+        required: true
+      TF_CLUSTER_CONFIG_JSON:
+        required: true
+    outputs:
+      changes:
+        value: ${{ jobs.terraform.outputs.changes }}
+      applied:
+        value: ${{ jobs.terraform.outputs.applied }}
+      plan_sha:
+        value: ${{ jobs.terraform.outputs.plan_sha }}
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    if: github.repository == 'Gearflow-Fiap/gearflow-infra-broker' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      changes: ${{ steps.result.outputs.changes }}
+      applied: ${{ steps.result.outputs.applied }}
+      plan_sha: ${{ steps.result.outputs.plan_sha }}
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_PAGER: ''
+      TF_IN_AUTOMATION: 'true'
+      TF_INPUT: 'false'
+      TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
+      TF_CLUSTER_CONFIG_JSON: ${{ secrets.TF_CLUSTER_CONFIG_JSON }}
+      TF_REVIEWED_COMMIT: ${{ inputs.ref }}
+      TF_OPERATION: ${{ inputs.operation }}
+      TF_EXPECTED_SHA: ${{ inputs.expected_plan_sha }}
+      TF_CONFIRM_CLUSTER: ${{ inputs.confirm_cluster }}
+      TF_ALLOW_DESTRUCTIVE: ${{ inputs.allow_destructive }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c # v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: '531827661311'
+          unset-current-credentials: true
+          mask-aws-account-id: true
+
+      - name: Plan or apply exact reviewed infrastructure
+        id: result
+        shell: bash
+        run: |
+          args=(--mode "$TF_OPERATION" --expected-plan-sha "$TF_EXPECTED_SHA" --confirm-cluster "$TF_CONFIRM_CLUSTER")
+          if [ "$TF_ALLOW_DESTRUCTIVE" = true ]; then
+            args+=(--allow-destructive)
+          fi
+          python scripts/cd/terraform_cluster.py "${args[@]}"
