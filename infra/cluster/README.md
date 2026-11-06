@@ -75,6 +75,14 @@ Esperado: WRITE_OK e READ_OK em Pods diferentes, com o mesmo PVC. Antes da limpe
 
 ## State e pipelines
 
+Ao atualizar o provider/lock file, registrar os checksums das duas plataformas usadas pelo projeto antes de commitar:
+
+```powershell
+terraform '-chdir=infra/cluster' providers lock -platform=linux_amd64 -platform=windows_amd64
+```
+
+O CI e o CD usam init -lockfile=readonly para validar o lock versionado sem corrigi-lo silenciosamente no runner. O hash h1 de Windows nao valida o pacote extraido de Linux; os dois precisam estar registrados. A versao do provider continua fixada no lock file, sem upgrade automatico.
+
 State migrado para HCP Terraform: organizacao gearflowfiapmurilo, workspace gearflow-fase4-cluster, Execution Mode local. O arquivo backend.tf conecta todos os operadores ao mesmo state remoto com locking. Local significa que plan/apply executam na maquina ou runner; o HCP armazena o state. Nao criar outro workspace/state para o mesmo cluster.
 
 Na migracao, o workspace estava vazio. Foi preservado backup em .local/state-backups e comparado o conteudo completo de resources e outputs antes/depois: identico, com 12 instancias gerenciadas. O HCP iniciou nova linhagem/serial; os recursos AWS nao foram alterados. O Terraform validate passou com o novo backend. Backups locais nao sao mais a fonte de verdade; nao restaurar por cima do workspace sem revisao.
