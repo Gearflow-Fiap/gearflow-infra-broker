@@ -37,8 +37,8 @@ spec:
                   name: rabbitmq-credentials
                   key: password
           ports:
-            - name: amqps
-              containerPort: 5671
+            - name: amqp
+              containerPort: 5672
             - name: management
               containerPort: 15672
           resources:
@@ -72,14 +72,7 @@ spec:
               mountPath: /etc/rabbitmq/rabbitmq.conf
               subPath: rabbitmq.conf
               readOnly: true
-            - name: tls
-              mountPath: /etc/rabbitmq/tls
-              readOnly: true
       volumes:
-        - name: tls
-          secret:
-            secretName: rabbitmq-tls
-            defaultMode: 0440
         - name: config
           configMap:
             name: rabbitmq-config

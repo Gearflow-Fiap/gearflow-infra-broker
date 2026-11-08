@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import socket
-import ssl
 import time
 
 logging.disable(logging.CRITICAL)
@@ -21,7 +20,7 @@ def blocked_port(port):
 
 
 if PHASE == "network-denied":
-    blocked_port(5671)
+    blocked_port(5672)
     print("PASS: origem sem autorizacao de rede bloqueada", flush=True)
     raise SystemExit(0)
 
@@ -38,11 +37,10 @@ def queue(service):
 
 def connect(service, password=None):
     user = f"gearflow_{service}"
-    context = ssl.create_default_context(cafile="/ca/ca.crt")
     return pika.BlockingConnection(pika.ConnectionParameters(
-        host=HOST, port=5671, virtual_host="gearflow",
+        host=HOST, port=5672, virtual_host="gearflow",
         credentials=pika.PlainCredentials(user, password if password is not None else USERS[user]),
-        ssl_options=pika.SSLOptions(context, HOST), heartbeat=30,
+        heartbeat=30,
         socket_timeout=5, stack_timeout=12, blocked_connection_timeout=10,
         connection_attempts=1,
     ))
@@ -92,15 +90,6 @@ if PHASE == "verify":
         denied(service, lambda channel: channel.queue_declare(queue(service) + ".forbidden", durable=True))
         denied(service, lambda channel: channel.basic_publish(exchange="", routing_key=queue(service), body=b"denied"))
         print(f"PASS: {service}: publish/consume/ack, isolamento de filas, DLQ e administracao negados", flush=True)
-    for trusted, name in ((False, HOST), (True, "invalid.gearflow.test")):
-        context = ssl.create_default_context(cafile="/ca/ca.crt" if trusted else None)
-        try:
-            with socket.create_connection((HOST, 5671), timeout=5) as raw:
-                with context.wrap_socket(raw, server_hostname=name):
-                    pass
-        except ssl.SSLCertVerificationError:
-            continue
-        raise AssertionError("Certificado/hostname incorreto foi aceito")
     try:
         connection = connect("os", password="invalid-smoke-password")
     except pika.exceptions.ProbableAuthenticationError:
@@ -108,9 +97,9 @@ if PHASE == "verify":
     else:
         connection.close()
         raise AssertionError("Senha incorreta foi aceita")
-    blocked_port(5672)
+    blocked_port(5671)
     blocked_port(15672)
-    print("PASS: TLS/credencial invalidos rejeitados; AMQP sem TLS e painel inacessiveis pela rede", flush=True)
+    print("PASS: senha incorreta rejeitada; porta TLS e painel inacessiveis pela rede", flush=True)
     with connect("budget") as connection:
         channel = connection.channel()
         publish(channel, "budget", b"dead-letter-smoke")

@@ -51,7 +51,7 @@ jobs:
           kubectl kustomize k8s | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'Invalid Kubernetes manifests.' }
 
-      - name: Test CD access cleanup and topology verification
+      - name: Test CD and broker lifecycle
         run: python -m unittest discover -s tests -v
 
       - name: Start broker and import topology
@@ -63,7 +63,7 @@ jobs:
       - name: Test routing, persistence and dead lettering
         run: ./scripts/Test-Broker.ps1 -RestartBroker
 
-      - name: Test shared broker TLS and service permissions
+      - name: Test shared broker AMQP and service permissions
         run: ./scripts/Test-SharedBroker.ps1
 
       - name: Diagnostics on failure

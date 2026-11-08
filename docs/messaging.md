@@ -56,7 +56,7 @@ As aplicações devem utilizar a topologia acordada e não declarar recursos inc
 
 `rabbitmq/service-permissions.json` separa os usuários OS, Budget, Operation e Inventory no vhost `gearflow`. Cada um publica somente na exchange `gearflow.events` e lê filas do próprio prefixo `gearflow.<servico>.`, excluindo sufixo `.dlq`. Nenhum possui tags administrativas ou permissão para declarar, excluir ou vincular recursos. A infraestrutura cria a topologia; bibliotecas dos serviços precisam usar recursos existentes.
 
-É uma convenção técnica inicial, sem aprovação dos contratos de negócio. A publicação ainda não restringe routing keys na exchange comum. Revisar junto dos contratos e, se necessário, adicionar permissões de tópico por produtor. Filas novas não são criadas pelo script de usuários. Consulte [acesso, TLS e provisionamento](../k8s/README.md).
+É uma convenção técnica inicial, sem aprovação dos contratos de negócio. A publicação ainda não restringe routing keys na exchange comum. Revisar junto dos contratos e, se necessário, adicionar permissões de tópico por produtor. Filas novas não são criadas pelo script de usuários. Consulte [acesso AMQP e provisionamento](../k8s/README.md).
 
 ## Verificação manual local
 

@@ -16,11 +16,15 @@ Alterar o RabbitMQ nao recria o cluster. O CI de Terraform valida apenas alterac
 - Topologia inicial proposta para `OrderCreated`, com fila do Budget e fila de erro.
 - Configuração sem credenciais versionadas.
 
-A Saga, regras de negócio, Outbox e consumidores pertencem aos microsserviços. Este repositório não implementa essas funcionalidades. O cluster EKS foi criado via Terraform, com dois workers Ready. RabbitMQ implantado com EBS de 10 GiB, TLS e usuários por serviço; comunicação AMQP, permissões, NetworkPolicy, DLQ e persistência após recriação do Pod foram validadas. O workflow de CD está preparado e seu script foi validado no cluster; falta publicar na main e confirmar a execução no GitHub. Alta disponibilidade não está implementada.
+A Saga, regras de negócio, Outbox e consumidores pertencem aos microsserviços. Este repositório não implementa essas funcionalidades. A implantação anterior do RabbitMQ no EKS, com EBS de 10 GiB e usuários por serviço, teve comunicação AMQP, permissões, NetworkPolicy, DLQ e persistência validadas. Em 08/11/2026, o laboratório passou a usar AMQP sem TLS por decisão do grupo; a mudança foi validada localmente, mas ainda requer deploy e verificação no EKS. Alta disponibilidade não está implementada.
 
-A imagem está fixada em `4.2.9-management` e digest OCI, iguais no Compose e Kubernetes. No ambiente compartilhado, os manifestos exigem TLS na porta 5671, restringem o painel ao loopback do Pod e incluem NetworkPolicy. Foram testados acesso permitido com ambas as labels e bloqueio na ausência da label do Pod ou namespace. Usuários e permissões dos quatro serviços são preparados por script, sem senhas no Git. Veja [implantação compartilhada](k8s/README.md).
+A imagem está fixada em `4.2.9-management` e digest OCI, iguais no Compose e Kubernetes. No ambiente compartilhado, os manifestos usam AMQP interno na porta 5672, restringem o painel ao loopback do Pod e incluem NetworkPolicy. TLS e certificados não são necessários para esse laboratório acadêmico; usuário/senha continuam obrigatórios. Usuários e permissões dos quatro serviços são preparados por script, sem senhas no Git. Veja [implantação compartilhada](k8s/README.md).
 
 Evidências e limites: [validação local](docs/shared-validation.md), [validação do EKS](docs/cluster-validation.md) e [RabbitMQ no EKS](docs/broker-validation.md). O cluster e o volume do broker permanecem ativos e consumindo créditos. Para revisar sua remoção, use `pwsh -File scripts/Destroy-Cluster.ps1`; a exclusão exige opções explícitas e revisão do volume retido, conforme o README de Kubernetes.
+
+## Ciclo do ambiente EKS
+
+Para o EKS ja criado, o bootstrap e deploy completo do RabbitMQ pode ser executado por `pwsh -File scripts/Start-ClusterBroker.ps1`. O CD usa o mesmo caminho e cria Secrets/usuarios ausentes sem trocar senhas existentes. Para encerrar descartando as mensagens: `pwsh -File scripts/Destroy-Cluster.ps1 -Execute -ConfirmClusterName gearflow-fase4 -DiscardRabbitMqData`. Veja [criacao, migracao e limpeza em um comando](docs/lifecycle.md).
 
 ## Executar localmente
 
@@ -49,7 +53,7 @@ As portas publicadas ficam restritas à máquina local. Cada integrante executa 
 
 ## Integração contínua
 
-O workflow `.github/workflows/ci.yml` executa em PRs, pushes na `main` e disparo manual. Valida JSON, sintaxe PowerShell, Compose e renderização Kustomize; sobe um RabbitMQ temporário, verifica inicialização repetida e testa roteamento, persistência e DLQ. Também executa um container isolado para verificar TLS, usuários/permissões, preservação de senhas e painel no loopback. As verificações de mensagens usam HTTP de gerenciamento; não substituem integração AMQP dos serviços nem testes de rede no EKS.
+O workflow `.github/workflows/ci.yml` executa em PRs, pushes na `main` e disparo manual. Valida JSON, sintaxe PowerShell, Compose e renderização Kustomize; sobe um RabbitMQ temporário, verifica inicialização repetida e testa roteamento, persistência e DLQ. Também executa um container isolado para verificar resposta AMQP sem TLS, usuários/permissões, preservação de senhas e painel no loopback. As verificações de mensagens usam HTTP de gerenciamento; não substituem integração AMQP dos serviços nem testes de rede no EKS.
 
 O runner usa credenciais aleatórias temporárias, sem secrets cadastrados. Ao finalizar, remove containers e volumes somente do ambiente descartável do CI; localmente os dados continuam preservados. Logs de diagnóstico aparecem em caso de falha. Não há deploy neste workflow.
 
@@ -94,9 +98,8 @@ rabbitmq/rabbitmq.conf      Configuração do broker
 rabbitmq/definitions.json   Topologia inicial sem usuários/senhas
 scripts/Start-Broker.ps1    Inicialização local em um comando
 scripts/Test-Broker.ps1     Validação isolada do broker
-scripts/New-BrokerTls.ps1   Certificado TLS para o laboratório
 scripts/Set-BrokerServiceUsers.ps1  Usuários e ACL dos serviços
-scripts/Test-SharedBroker.ps1      Teste TLS/ACL descartável
+scripts/Test-SharedBroker.ps1      Teste AMQP/ACL descartável
 .github/workflows/ci.yml    Validação automatizada de PRs
 docs/messaging.md           Convenções e responsabilidades
 k8s/README.md               Próxima etapa de implantação

@@ -31,9 +31,7 @@ function Run-Job($name,$phase,$namespace=$allowed,[bool]$label=$true) {
     $mounts=@(@{name='code';mountPath='/tests';readOnly=$true})
     if($phase -ne 'network-denied'){
         $volumes+=@{name='credentials';secret=@{secretName='broker-validation-users'}}
-        $volumes+=@{name='ca';configMap=@{name='broker-validation-ca'}}
         $mounts+=@{name='credentials';mountPath='/credentials';readOnly=$true}
-        $mounts+=@{name='ca';mountPath='/ca';readOnly=$true}
     }
     $container=@{name='test';image='python:3.12-alpine';command=@('sh','-ec','if [ "$PHASE" != network-denied ]; then pip install --disable-pip-version-check --quiet --target /tmp/deps pika==1.3.2; fi; PYTHONPATH=/tmp/deps python /tests/amqp-smoke.py');env=@(@{name='PHASE';value=$phase},@{name='RUN_ID';value=$runId});volumeMounts=$mounts;resources=@{requests=@{cpu='50m';memory='64Mi'};limits=@{cpu='250m';memory='192Mi'}}}
     Send-Object @{apiVersion='batch/v1';kind='Job';metadata=@{name=$name;namespace=$namespace};spec=@{backoffLimit=0;activeDeadlineSeconds=240;template=@{metadata=@{labels=$labels};spec=@{restartPolicy='Never';automountServiceAccountToken=$false;containers=@($container);volumes=$volumes}}}}
@@ -59,7 +57,6 @@ try {
     }
     $users=Get-Content .local/service-credentials.json -Raw
     Send-Object @{apiVersion='v1';kind='Secret';metadata=@{name='broker-validation-users';namespace=$allowed};type='Opaque';stringData=@{'users.json'=$users}}
-    K -n $allowed create configmap broker-validation-ca --from-file=ca.crt=.local/tls/ca.crt
     foreach($service in @('os','budget','operation','inventory')){
         $name="gearflow.$service.smoke.$runId"
         $null=Api PUT "queues/gearflow/$name" @{durable=$true;auto_delete=$false;arguments=@{'x-queue-type'='classic';'x-dead-letter-exchange'='gearflow.dead-letter';'x-dead-letter-routing-key'="smoke.$runId.$service.failed"}}

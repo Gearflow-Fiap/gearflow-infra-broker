@@ -42,9 +42,9 @@ Nao executar Terraform ou alterar os CIDRs manualmente durante o CD. A alteracao
 
 ## O que o deploy faz
 
-Requer bootstrap da etapa 3: namespace, RabbitMQ existente, Secrets rabbitmq-credentials e rabbitmq-tls, CA valida e quatro usuarios de servico ja criados. Destruir/recriar o cluster exige repetir esse bootstrap antes do CD. O pipeline para com erro se esses requisitos nao existirem; nao inventa nem troca senhas.
+O bootstrap faz parte do deploy: cria Secrets de credenciais/admin e usuarios ausentes em cluster vazio, com senhas aleatorias, e preserva/verifica credenciais existentes. Usa AMQP interno na porta 5672 sem TLS. Apos rollout e verificacao das credenciais, remove rabbitmq-tls/rabbitmq-ca obsoletos, se existirem. Nao exige certificados nem senha administrativa no GitHub. A instalacao antiga precisa de uma migracao local das senhas para Secrets individuais antes do primeiro novo CD. Veja lifecycle.md. Senhas divergentes exigem revisao; nao ha reset automatico.
 
-scripts/cd/deploy_broker.py confere o endpoint do contexto, valida os manifests no servidor e aplica k8s/. Aguarda o StatefulSet, importa definitions.json e verifica filas/exchanges (nomes, durabilidade, auto-delete, argumentos declarados e tipo de exchange), bindings e policies. Aplica e confere as permissoes dos quatro usuarios existentes e verifica processo/alarmes do broker.
+scripts/cd/deploy_broker.py confere o endpoint do contexto, executa bootstrap_broker.py, valida/aplica k8s/, aguarda o StatefulSet, importa definitions.json e verifica filas/exchanges (nomes, durabilidade, auto-delete, argumentos declarados e tipo de exchange), bindings e policies. Aplica e confere as permissoes dos quatro usuarios e verifica processo/alarmes do broker.
 
 Uma mudanca de imagem/configuracao pode recriar o unico Pod e interromper conexoes. Nao ha HA. O pipeline nao faz rollback automatico de topologia: isso poderia perder mensagens ou alterar dados. Recursos removidos de definitions.json nao sao excluidos automaticamente. Alteracoes incompativeis de filas exigem migracao planejada, mesmo depois da etapa 4.
 

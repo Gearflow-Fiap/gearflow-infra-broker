@@ -5,9 +5,7 @@ $root = Split-Path $PSScriptRoot -Parent
 $id = [guid]::NewGuid().ToString('N')
 $container = "gearflow-security-$id"
 $fixture = Join-Path $root ".local/shared-tests/$id"
-$tls = Join-Path $root '.local/tls'
 $null = New-Item -ItemType Directory -Path $fixture -Force
-if (-not (Test-Path $tls)) { & (Join-Path $PSScriptRoot 'New-BrokerTls.ps1') }
 $originalConfig = Get-Content (Join-Path $root 'k8s/rabbitmq.conf') -Raw
 $configPath = Join-Path $fixture 'rabbitmq.conf'
 # API acessivel somente por porta loopback efemera para testar o provisionador.
@@ -36,33 +34,40 @@ function Wait-Broker {
     }
     throw 'Broker de teste nao iniciou.'
 }
-function Test-Tls([string]$ServerName, [bool]$TrustCa) {
-    $client = [Net.Sockets.TcpClient]::new('127.0.0.1', $tlsPort)
-    $stream = [Net.Security.SslStream]::new($client.GetStream(), $false)
-    $chain = [Security.Cryptography.X509Certificates.X509ChainPolicy]::new()
-    $chain.RevocationMode = [Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
-    if ($TrustCa) {
-        $chain.TrustMode = [Security.Cryptography.X509Certificates.X509ChainTrustMode]::CustomRootTrust
-        $null = $chain.CustomTrustStore.Add([Security.Cryptography.X509Certificates.X509Certificate2]::CreateFromPem([IO.File]::ReadAllText((Join-Path $tls 'ca.crt'))))
-    }
-    $options = [Net.Security.SslClientAuthenticationOptions]::new()
-    $options.TargetHost = $ServerName
-    $options.CertificateChainPolicy = $chain
-    try { $stream.AuthenticateAsClient($options) } finally { $stream.Dispose(); $client.Dispose() }
+function Test-Amqp {
+    $client = [Net.Sockets.TcpClient]::new('127.0.0.1', $amqpPort)
+    $client.ReceiveTimeout = 5000
+    $client.SendTimeout = 5000
+    $stream = $client.GetStream()
+    try {
+        # AMQP 0-9-1 sem TLS: o broker responde ao cabecalho com Connection.Start.
+        $header = [byte[]]@(65, 77, 81, 80, 0, 0, 9, 1)
+        $stream.Write($header, 0, $header.Length)
+        $response = [byte[]]::new(11)
+        $received = 0
+        while ($received -lt $response.Length) {
+            $count = $stream.Read($response, $received, $response.Length - $received)
+            if ($count -eq 0) { throw 'Broker encerrou a conexao antes de responder AMQP.' }
+            $received += $count
+        }
+        if ($response[0] -ne 1 -or $response[1] -ne 0 -or $response[2] -ne 0 -or
+            $response[7] -ne 0 -or $response[8] -ne 10 -or $response[9] -ne 0 -or $response[10] -ne 10) {
+            throw 'Resposta diferente de AMQP Connection.Start.'
+        }
+    } finally { $stream.Dispose(); $client.Dispose() }
 }
 try {
     $compose = Get-Content (Join-Path $root 'compose.yaml') -Raw
     $image = [regex]::Match($compose, '(?m)^\s+image: (\S+)').Groups[1].Value
     $null = Invoke-Docker run -d --name $container --hostname shared-broker-test `
-        --publish 127.0.0.1::5671 --publish 127.0.0.1::15672 `
+        --publish 127.0.0.1::5672 --publish 127.0.0.1::15672 `
         --env RABBITMQ_DEFAULT_USER --env RABBITMQ_DEFAULT_PASS --env RABBITMQ_DEFAULT_VHOST=gearflow `
-        --mount "type=bind,source=$configPath,target=/etc/rabbitmq/rabbitmq.conf,readonly" `
-        --mount "type=bind,source=$tls,target=/etc/rabbitmq/tls,readonly" $image
+        --mount "type=bind,source=$configPath,target=/etc/rabbitmq/rabbitmq.conf,readonly" $image
     $started = $true
     Wait-Broker
     $inspect = (Invoke-Docker inspect $container | ConvertFrom-Json)[0]
     $port = [int]$inspect.NetworkSettings.Ports.'15672/tcp'[0].HostPort
-    $tlsPort = [int]$inspect.NetworkSettings.Ports.'5671/tcp'[0].HostPort
+    $amqpPort = [int]$inspect.NetworkSettings.Ports.'5672/tcp'[0].HostPort
     $api = "http://127.0.0.1:$port/api"
     $ready = $false
     for ($i=0; $i -lt 30; $i++) {
@@ -78,6 +83,9 @@ try {
     $serviceCredentials = Get-Content $credentialsPath -Raw | ConvertFrom-Json -AsHashtable
     foreach ($user in $policy.users) {
         $actual = Invoke-RestMethod "$api/users/$($user.name)" -Headers $headers
+        @{user=$actual;password=$serviceCredentials[$user.name]} | ConvertTo-Json -Depth 8 -Compress |
+            python -c "import json,sys; sys.path.insert(0,sys.argv[1]); from bootstrap_broker import password_matches; data=json.load(sys.stdin); assert password_matches(data['user'],data['password']), 'Hash RabbitMQ divergente'" (Join-Path $root 'scripts/cd')
+        if ($LASTEXITCODE) { throw 'Verificacao do formato de hash RabbitMQ falhou.' }
         if (@($actual.tags).Count -ne 0) { throw 'Usuario de servico possui tags.' }
         $permissions = @(Invoke-RestMethod "$api/users/$($user.name)/permissions" -Headers $headers)
         if ($permissions.Count -ne 1 -or $permissions[0].vhost -ne 'gearflow') { throw 'Acesso inesperado a outro vhost.' }
@@ -93,23 +101,19 @@ try {
         }
     }
     Write-Host 'PASS: usuarios sem tags, ACL por servico, API administrativa negada e repeticao sem rotacao de senhas.'
-    Test-Tls 'rabbitmq.messaging.svc.cluster.local' $true
-    foreach ($negative in @(@{Name='nome-incorreto.invalid'; Trust=$true}, @{Name='rabbitmq.messaging.svc.cluster.local'; Trust=$false})) {
-        $denied = $false
-        try { Test-Tls $negative.Name $negative.Trust } catch [Security.Authentication.AuthenticationException] { $denied=$true }
-        if (-not $denied) { throw 'TLS aceitou hostname ou CA incorretos.' }
-    }
-    Write-Host 'PASS: TLS com CA/hostname corretos; rejeicao de CA e hostname incorretos.'
+    Test-Amqp
+    Write-Host 'PASS: AMQP 0-9-1 responde na porta 5672 sem certificados.'
     [IO.File]::WriteAllText($configPath, $originalConfig)
     $null = Invoke-Docker restart $container
     Wait-Broker
     $inspect = (Invoke-Docker inspect $container | ConvertFrom-Json)[0]
-    $tlsPort = [int]$inspect.NetworkSettings.Ports.'5671/tcp'[0].HostPort
+    $amqpPort = [int]$inspect.NetworkSettings.Ports.'5672/tcp'[0].HostPort
     $listeners = Invoke-Docker exec --user rabbitmq $container rabbitmq-diagnostics -q listeners
     if (($listeners -join "`n") -notmatch '127\.0\.0\.1, port: 15672') { throw 'Painel nao esta restrito ao loopback.' }
-    if (($listeners -join "`n") -match 'port: 5672,') { throw 'AMQP sem TLS esta habilitado.' }
-    Test-Tls 'rabbitmq.messaging.svc.cluster.local' $true
-    Write-Host 'PASS: configuracao exata do Kubernetes inicia com AMQPS e painel somente no loopback.'
+    if (($listeners -join "`n") -notmatch 'port: 5672,') { throw 'Listener AMQP 5672 ausente.' }
+    if (($listeners -join "`n") -match 'port: 5671,') { throw 'Listener TLS ainda esta habilitado.' }
+    Test-Amqp
+    Write-Host 'PASS: configuracao exata do Kubernetes inicia com AMQP 5672 e painel somente no loopback.'
 } catch {
     if ($started) { & docker logs --tail 30 $container }
     throw
