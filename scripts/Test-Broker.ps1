@@ -30,11 +30,12 @@ try {
             foreach ($item in $defs.$kind) { $item.vhost = $vhost }
         }
         $null = Request POST 'definitions' $defs
-        $queue = 'gearflow.budget.order-created.v1'
+        $queue = 'gearflow.billing.commands.v1'
         $id = [guid]::NewGuid().ToString()
-        $payload = @{ messageId=$id; eventType='OrderCreated'; schemaVersion=1; serviceOrderId=[guid]::NewGuid().ToString(); test=$true } | ConvertTo-Json -Compress
-        $published = Request POST "exchanges/$vhost/gearflow.events/publish" @{
-            properties=@{ delivery_mode=2; message_id=$id }; routing_key='os.order-created.v1'; payload=$payload; payload_encoding='string'
+        $orderId = [guid]::NewGuid().ToString()
+        $payload = @{ messageId=$id; messageType='CancelBudget'; schemaVersion=1; serviceOrderId=$orderId; correlationId=$orderId; producer='gearflow-os-service'; occurredOn=[DateTime]::UtcNow.ToString('o'); payload=@{budgetId=[guid]::NewGuid().ToString();reason='smoke-test'} } | ConvertTo-Json -Depth 6 -Compress
+        $published = Request POST "exchanges/$vhost/gearflow.commands.v1/publish" @{
+            properties=@{ delivery_mode=2; content_type='application/json'; message_id=$id; correlation_id=$orderId }; routing_key='billing.CancelBudget'; payload=$payload; payload_encoding='string'
         }
         if (-not $published.routed) { throw 'Mensagem sem rota.' }
         Write-Host 'PASS: topologia importada e mensagem roteada.'
@@ -51,8 +52,13 @@ try {
         if ($messages.Count -ne 1 -or $messages[0].properties.message_id -ne $id) { throw 'Mensagem nao encontrada ou divergente.' }
         Write-Host 'PASS: leitura e conteudo da mensagem persistente.'
         if ($RestartBroker) { Write-Host 'PASS: mensagem preservada apos reinicio do broker.' }
-        # Rejeitar sem requeue deve acionar a policy de dead lettering.
-        $null = Request POST "queues/$vhost/$queue/get" @{ count=1; ackmode='reject_requeue_false'; encoding='auto' }
+        $null = Request POST "queues/$vhost/$queue/get" @{ count=1; ackmode='ack_requeue_false'; encoding='auto' }
+        # Billing publica explicitamente a falha; o broker nao inventa DLX para o worker.
+        $deadPayload = @{originalExchange='gearflow.commands.v1'; originalRoutingKey='billing.CancelBudget'; messageId=$id; correlationId=$orderId; bodyBase64=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($payload));code='smoke';attempts=4;failedOn=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json -Compress
+        $published = Request POST "exchanges/$vhost/gearflow.deadletters.v1/publish" @{
+            properties=@{delivery_mode=2;message_id=$id}; routing_key=$queue; payload=$deadPayload;payload_encoding='string'
+        }
+        if (-not $published.routed) { throw 'DLQ sem rota.' }
         $dead = @()
         for ($i=0; $i -lt 15; $i++) {
             $dead = @(Request POST "queues/$vhost/$queue.dlq/get" @{ count=1; ackmode='ack_requeue_false'; encoding='auto' })
@@ -60,7 +66,7 @@ try {
             Start-Sleep -Seconds 1
         }
         if ($dead.Count -ne 1 -or $dead[0].properties.message_id -ne $id) { throw 'Mensagem nao chegou a DLQ.' }
-        Write-Host 'PASS: rejeicao encaminhada para DLQ e consumida.'
+        Write-Host 'PASS: publicacao explicita de falha roteada para a DLQ do Billing.'
     } finally {
         if ($created) { $null = Request DELETE "vhosts/$vhost" }
     }

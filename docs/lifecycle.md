@@ -55,8 +55,10 @@ O journal .local/destroy/rabbitmq-cleanup.json e salvo antes da primeira exclusa
 
 ## Validacao desta alteracao
 
-34 testes Python com AWS/Kubernetes simulados: instalacao nova e repetida, migracao e divergencia de senhas, volume existente sem credencial recuperavel, preservacao de credenciais, remocao de certificados antigos apos rollout, bloqueio de recursos estrangeiros, origem do EBS, ordem de exclusao, retomada de resposta perdida e cluster recriado; tambem incluem os controles anteriores de CD/aprovacao Terraform.
+38 testes Python passaram com AWS/Kubernetes simulados: instalacao nova e repetida, migracao e divergencia de senhas, volume existente sem credencial recuperavel, preservacao de credenciais, remocao de certificados antigos apos rollout, bloqueio de recursos estrangeiros, origem do EBS, ordem de exclusao, retomada de resposta perdida e cluster recriado; tambem incluem contratos/ACL e os controles anteriores de CD/aprovacao Terraform.
 
 Em Docker descartavel, o hash retornado pela API RabbitMQ foi comparado com as senhas dos usuarios usando o mesmo verificador da migracao. Resposta AMQP 0-9-1 sem TLS na porta 5672, ACL, ausencia de listener 5671, painel no loopback e reinicio do container foram validados.
+
+A adaptacao aos servicos tambem foi validada com RabbitMQ.Client/MassTransit 8.5.11: declaracoes repetidas por usuario, comandos/eventos, destinos de erro e acesso negado a filas de comando alheias. Startup repetido, roteamento Billing, DLQ explicita e persistencia apos restart passaram em Compose isolado. Limites em [messaging.md](messaging.md).
 
 Nenhum recurso AWS foi provisionado/excluido para testar esta alteracao. O ciclo novo de criacao/destruicao completo no EKS ainda precisa ser observado numa janela de laboratorio autorizada; testes simulados e Docker nao substituem essa validacao do EBS/CSI em runtime.

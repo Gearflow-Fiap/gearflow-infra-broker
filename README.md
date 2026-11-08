@@ -2,6 +2,8 @@
 
 Infraestrutura compartilhada da Fase 4: cluster EKS e RabbitMQ para OS, Budget, Operation e Inventory.
 
+Para os integrantes das aplicações: [guia de comunicação entre microsserviços e conexão ao RabbitMQ](docs/GUIA-INTEGRACAO-RABBITMQ.md), com fluxo, filas, formatos de mensagens, credenciais e exemplos de configuração Kubernetes.
+
 ## Organizacao do cluster compartilhado
 
 - [`infra/cluster/`](infra/cluster/README.md): Terraform do EKS, rede e workers para os quatro servicos e o broker.
@@ -13,7 +15,7 @@ Alterar o RabbitMQ nao recria o cluster. O CI de Terraform valida apenas alterac
 ## Escopo atual
 
 - RabbitMQ local com painel de administração, volume persistente e healthcheck.
-- Topologia inicial proposta para `OrderCreated`, com fila do Budget e fila de erro.
+- Topologia compatível com os contratos atuais de OS, Budget, Operation e Inventory, com permissões por aplicação.
 - Configuração sem credenciais versionadas.
 
 A Saga, regras de negócio, Outbox e consumidores pertencem aos microsserviços. Este repositório não implementa essas funcionalidades. A implantação anterior do RabbitMQ no EKS, com EBS de 10 GiB e usuários por serviço, teve comunicação AMQP, permissões, NetworkPolicy, DLQ e persistência validadas. Em 08/11/2026, o laboratório passou a usar AMQP sem TLS por decisão do grupo; a mudança foi validada localmente, mas ainda requer deploy e verificação no EKS. Alta disponibilidade não está implementada.
@@ -53,7 +55,7 @@ As portas publicadas ficam restritas à máquina local. Cada integrante executa 
 
 ## Integração contínua
 
-O workflow `.github/workflows/ci.yml` executa em PRs, pushes na `main` e disparo manual. Valida JSON, sintaxe PowerShell, Compose e renderização Kustomize; sobe um RabbitMQ temporário, verifica inicialização repetida e testa roteamento, persistência e DLQ. Também executa um container isolado para verificar resposta AMQP sem TLS, usuários/permissões, preservação de senhas e painel no loopback. As verificações de mensagens usam HTTP de gerenciamento; não substituem integração AMQP dos serviços nem testes de rede no EKS.
+O workflow `.github/workflows/ci.yml` executa em PRs, pushes na `main` e disparo manual. Valida JSON, catálogo de contratos, sintaxe PowerShell, Compose e renderização Kustomize; sobe um RabbitMQ temporário, verifica inicialização repetida e testa roteamento, persistência e DLQ. Também executa clientes AMQP e MassTransit 8.5.11 em container isolado para testar contratos de transporte, permissões, recursos de erro, preservação de senhas e painel no loopback. Os consumidores de teste não executam as regras de negócio dos serviços. Veja [contratos e limites](docs/messaging.md).
 
 O runner usa credenciais aleatórias temporárias, sem secrets cadastrados. Ao finalizar, remove containers e volumes somente do ambiente descartável do CI; localmente os dados continuam preservados. Logs de diagnóstico aparecem em caso de falha. Não há deploy neste workflow.
 
@@ -61,7 +63,7 @@ O workflow `broker-cd.yml`, chamado GearFlow CD, coordena EKS e RabbitMQ depois 
 
 O state do EKS já foi migrado para o HCP Terraform, organização `gearflowfiapmurilo`, workspace `gearflow-fase4-cluster`, com execução local e locking. A integração usa os Secrets `TF_API_TOKEN` e `TF_CLUSTER_CONFIG_JSON`, além das credenciais AWS temporárias. Veja [migração e operação do state remoto](docs/hcp-state.md).
 
-Após publicar o workflow, configure `Validate RabbitMQ` como check obrigatório na proteção da branch, se desejado. O arquivo sozinho não altera as proteções do GitHub. As filas atuais continuam sendo exemplos provisórios, não contratos de negócio aprovados.
+Após publicar o workflow, configure `Validate RabbitMQ` como check obrigatório na proteção da branch, se desejado. O arquivo sozinho não altera as proteções do GitHub. As filas atuais reproduzem os serviços; decisões de negócio continuam com seus responsáveis.
 
 ## Validação local automatizada
 
@@ -73,7 +75,7 @@ pwsh -File scripts/Test-Broker.ps1
 pwsh -File scripts/Test-Broker.ps1 -RestartBroker
 ```
 
-O script lê as credenciais da configuração Compose sem exibi-las, cria um vhost temporário, replica a topologia e verifica publicação, conteúdo, requeue e encaminhamento para a DLQ. Ao terminar, remove apenas o vhost criado pelo teste. Requer o usuário administrativo local. Se o processo for interrompido ou o broker ficar indisponível durante a limpeza, pode restar um vhost com prefixo `gearflow-smoke-` para revisão manual.
+O script lê as credenciais da configuração Compose sem exibi-las, cria um vhost temporário, replica a topologia e verifica publicação, conteúdo, requeue e publicação explícita na DLQ do Billing. Ao terminar, remove apenas o vhost criado pelo teste. Requer o usuário administrativo local. Se o processo for interrompido ou o broker ficar indisponível durante a limpeza, pode restar um vhost com prefixo `gearflow-smoke-` para revisão manual.
 
 O parâmetro `-RestartBroker` interrompe brevemente todas as conexões deste broker; use no ambiente local sem trabalho concorrente. O teste utiliza a API HTTP de gerenciamento, não um cliente AMQP dos microsserviços. Ele não valida Outbox, publisher confirms AMQP, idempotência de negócio ou Saga. Veja [resultado da validação](docs/local-validation.md).
 
@@ -95,7 +97,9 @@ docker compose down
 compose.yaml                Ambiente local
 .env.example                Variáveis de exemplo
 rabbitmq/rabbitmq.conf      Configuração do broker
-rabbitmq/definitions.json   Topologia inicial sem usuários/senhas
+rabbitmq/contracts.json     Catálogo extraído dos serviços
+rabbitmq/definitions.json   Topologia gerada sem usuários/senhas
+scripts/cd/sync_topology.py Geração/verificação de topologia e ACL
 scripts/Start-Broker.ps1    Inicialização local em um comando
 scripts/Test-Broker.ps1     Validação isolada do broker
 scripts/Set-BrokerServiceUsers.ps1  Usuários e ACL dos serviços

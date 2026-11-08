@@ -2,6 +2,8 @@
 # Usa apenas container/volume descartaveis. Nao acessa o cluster nem o Compose local.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
+& dotnet build (Join-Path $root 'tests/TransportProbe') --nologo --verbosity quiet
+if ($LASTEXITCODE) { throw 'Falha ao preparar teste MassTransit (.NET 10 necessario).' }
 $id = [guid]::NewGuid().ToString('N')
 $container = "gearflow-security-$id"
 $fixture = Join-Path $root ".local/shared-tests/$id"
@@ -74,6 +76,8 @@ try {
         try { $null = Invoke-RestMethod "$api/overview" -Headers $headers -TimeoutSec 3; $ready=$true; break } catch { Start-Sleep -Seconds 1 }
     }
     if (-not $ready) { throw 'API de teste indisponivel.' }
+    $definitions = Get-Content (Join-Path $root 'rabbitmq/definitions.json') -Raw
+    $null = Invoke-RestMethod "$api/definitions" -Method Post -Headers $headers -ContentType 'application/json' -Body $definitions -TimeoutSec 30
     $credentialsPath = Join-Path $fixture 'service-credentials.json'
     & (Join-Path $PSScriptRoot 'Set-BrokerServiceUsers.ps1') -ManagementPort $port -AdminCredential $admin -CredentialFile $credentialsPath
     $before = [IO.File]::ReadAllText($credentialsPath)
@@ -92,15 +96,14 @@ try {
         $serviceAuth = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("$($user.name):$($serviceCredentials[$user.name])"))
         $response = Invoke-WebRequest "$api/overview" -Headers @{ Authorization="Basic $serviceAuth" } -SkipHttpErrorCheck -TimeoutSec 5
         if ([int]$response.StatusCode -notin @(401, 403)) { throw 'Usuario de servico conseguiu acessar a API administrativa.' }
-        if ('gearflow.events' -notmatch $user.write -or 'amq.default' -match $user.write) { throw 'Permissao de publicacao incorreta.' }
-        if ('gearflow.events' -match $user.configure) { throw 'Servico pode administrar topologia.' }
-        $service = $user.name.Replace('gearflow_', '')
-        if ("gearflow.$service.example.v1" -notmatch $user.read -or "gearflow.$service.example.v1.dlq" -match $user.read) { throw 'Permissao de fila/DLQ incorreta.' }
-        foreach ($other in $policy.users | Where-Object name -ne $user.name) {
-            if ("gearflow.$($other.name.Replace('gearflow_', '')).example.v1" -match $user.read) { throw 'Servico pode ler fila de outro servico.' }
+        foreach ($field in @('configure', 'write', 'read')) {
+            if ($permissions[0].$field -cne $user.$field) { throw "ACL cadastrada diverge de service-permissions.json: $field" }
         }
     }
     Write-Host 'PASS: usuarios sem tags, ACL por servico, API administrativa negada e repeticao sem rotacao de senhas.'
+    @{root=$root;port=$amqpPort;users=$serviceCredentials} | ConvertTo-Json -Depth 8 -Compress |
+        dotnet run --project (Join-Path $root 'tests/TransportProbe') --no-build --no-restore
+    if ($LASTEXITCODE) { throw 'Teste de contratos/ACL com cliente AMQP e MassTransit falhou.' }
     Test-Amqp
     Write-Host 'PASS: AMQP 0-9-1 responde na porta 5672 sem certificados.'
     [IO.File]::WriteAllText($configPath, $originalConfig)

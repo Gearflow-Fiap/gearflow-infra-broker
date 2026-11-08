@@ -65,7 +65,7 @@ kubectl -n messaging exec rabbitmq-0 -- rabbitmqctl import_definitions /tmp/gear
 kubectl -n messaging exec rabbitmq-0 -- rabbitmqctl list_queues -p gearflow name messages consumers
 ```
 
-O import é assíncrono; confirme as filas, repetindo a consulta se necessário. A topologia de negócio continua provisória e não inclui usuários/senhas. Alterações incompatíveis exigem migração; importar novamente não remove recursos antigos.
+O import é assíncrono; confirme as filas, repetindo a consulta se necessário. A topologia reproduz os contratos atuais dos serviços, conforme [catálogo e permissões](../docs/messaging.md), sem alterar regras de negócio. Não inclui usuários/senhas. Alterações incompatíveis exigem migração; importar novamente não remove recursos antigos.
 
 ## Criar usuários dos serviços
 
@@ -85,14 +85,14 @@ O script solicita a credencial administrativa, cria quatro usuários sem tags ad
 
 | Usuário | Publicação | Consumo |
 | --- | --- | --- |
-| `gearflow_os` | `gearflow.events` | `gearflow.os.*`, exceto sufixo `.dlq` |
-| `gearflow_budget` | `gearflow.events` | `gearflow.budget.*`, exceto sufixo `.dlq` |
-| `gearflow_operation` | `gearflow.events` | `gearflow.operation.*`, exceto sufixo `.dlq` |
-| `gearflow_inventory` | `gearflow.events` | `gearflow.inventory.*`, exceto sufixo `.dlq` |
+| `gearflow_os` | `gearflow.events`, `gearflow.commands.v1`, exchange default | `gearflow.os-service` |
+| `gearflow_budget` | Exchanges de comandos/eventos/falhas Billing | Comandos Billing, sua DLQ e assinatura de eventos |
+| `gearflow_operation` | Exchanges `operation.*` e recursos MassTransit do serviço | Endpoints `operation-*` e auxiliares |
+| `gearflow_inventory` | Exchanges `inventory.*` e recursos MassTransit do serviço | Endpoints `inventory-*`, email e auxiliares |
 
-Todos ficam restritos ao vhost `gearflow`, sem criar/excluir/configurar recursos, fazer bindings, publicar diretamente na exchange padrão, consumir DLQs ou acessar o painel. A topologia é administrada pela infraestrutura. Bibliotecas que declaram filas/exchanges automaticamente devem ser configuradas para usar a topologia existente; revisar isso com o grupo.
+Todos ficam restritos ao vhost `gearflow`, sem tags administrativas nem acesso ao painel. Aplicações podem declarar/configurar seus recursos e bindings como o código atual exige. Infraestrutura pré-cria a base; MassTransit administra também seus destinos auxiliares. A permissão configure também permite excluir recursos do escopo. A OS precisa declarar seis filas dos pares e publicar na exchange default; essa autorização não limita publicação por fila. Leia os limites em [mensageria](../docs/messaging.md#permissoes-por-aplicacao).
 
-Esta é uma convenção técnica inicial: a exchange comum ainda permite qualquer routing key. Quando os contratos forem acordados, revisar nomes e adicionar permissões de tópico por produtor se necessário. Não representa aprovação dos eventos/Saga. As filas de Operation/Inventory/OS não são criadas por esse script.
+`contracts.json` registra os contratos extraídos; `definitions.json` contém filas/exchanges/bindings e `service-permissions.json` contém ACLs, gerados por `python scripts/cd/sync_topology.py`. O script de usuários aplica as ACLs; o bootstrap/CD importa a topologia. Não representa aprovação das regras da Saga.
 
 ## Autorizar workloads na rede
 
@@ -137,9 +137,9 @@ Validação local isolada desta configuração:
 pwsh -File scripts/Test-SharedBroker.ps1
 ```
 
-Esse teste usa container/volume descartáveis, verifica resposta AMQP 0-9-1 sem TLS, ACL cadastrada, preservação de senhas e listeners. Não prova enforcement da NetworkPolicy, autenticação/consumo via cliente AMQP, Saga nem persistência no EKS. Esses testes seguem para a etapa de implantação.
+Esse teste requer .NET 10 e usa container/volume descartáveis. Verifica AMQP sem TLS, autenticação/ACL com clientes RabbitMQ.Client e MassTransit 8.5.11, comandos/eventos atuais, recursos de erro do framework, preservação de senhas e listeners. Não prova regras de negócio, Saga, enforcement da NetworkPolicy ou persistência no EKS.
 
-Para repetir as verificações reais do cluster implantado, use `pwsh -File scripts/Test-ClusterBroker.ps1`. Requer `.local/kubeconfig`, `.local/cluster-admin.json` e acesso ao cluster. O script cria filas com identificador exclusivo, Jobs/Secrets em namespaces temporários e remove esses recursos quando os testes passam. Usa cliente Pika 1.3.2 em imagem Python; precisa de acesso ao registro e ao PyPI. Em caso de falha, preserva os recursos para diagnóstico; revise-os antes de repetir.
+Para repetir as verificações reais do cluster implantado, use `pwsh -File scripts/Test-ClusterBroker.ps1`. Requer `.local/kubeconfig`, `.local/cluster-admin.json` e acesso ao cluster. O script replica a topologia em vhost exclusivo, cria usuários de teste com as mesmas ACLs, Jobs/Secrets em namespaces temporários e remove esses recursos quando os testes passam. Não consome mensagens das filas das aplicações. Usa cliente Pika 1.3.2 em imagem Python; precisa de acesso ao registro e ao PyPI. Em caso de falha, preserva e identifica os recursos para diagnóstico; revise-os antes de repetir.
 
 Para incluir a recriação do Pod e comprovar persistência, use `pwsh -File scripts/Test-ClusterBroker.ps1 -RestartBroker` somente numa janela sem consumidores. Esse parâmetro interrompe as conexões do broker. Ele não exclui o PVC. As credenciais administrativas geradas nesta implantação estão em `.local/cluster-admin.json`; senhas dos serviços em `.local/service-credentials.json`. Nenhum desses arquivos deve ser versionado ou compartilhado integralmente com os serviços.
 

@@ -1,9 +1,29 @@
 {
   "vhost": "gearflow",
   "users": [
-    { "name": "gearflow_os", "configure": "^$", "write": "^gearflow\\.events$", "read": "^gearflow\\.os\\.(?!.*\\.dlq$).+$" },
-    { "name": "gearflow_budget", "configure": "^$", "write": "^gearflow\\.events$", "read": "^gearflow\\.budget\\.(?!.*\\.dlq$).+$" },
-    { "name": "gearflow_operation", "configure": "^$", "write": "^gearflow\\.events$", "read": "^gearflow\\.operation\\.(?!.*\\.dlq$).+$" },
-    { "name": "gearflow_inventory", "configure": "^$", "write": "^gearflow\\.events$", "read": "^gearflow\\.inventory\\.(?!.*\\.dlq$).+$" }
+    {
+      "name": "gearflow_operation",
+      "configure": "^(?:operation[-.][a-z0-9-]+(?:_(?:error|skipped))?|GearFlow\\.Contracts\\.Operation\\.V1:[A-Za-z][A-Za-z0-9]*|MassTransit:(?:ReceiveFault|Fault(?:--GearFlow\\.Contracts\\.Operation\\.V1:[A-Za-z][A-Za-z0-9]*--)?)|[A-Za-z0-9_-]+_bus_[A-Za-z0-9]+)$",
+      "write": "^(?:operation[-.][a-z0-9-]+(?:_(?:error|skipped))?|GearFlow\\.Contracts\\.Operation\\.V1:[A-Za-z][A-Za-z0-9]*|MassTransit:(?:ReceiveFault|Fault(?:--GearFlow\\.Contracts\\.Operation\\.V1:[A-Za-z][A-Za-z0-9]*--)?)|[A-Za-z0-9_-]+_bus_[A-Za-z0-9]+)$",
+      "read": "^(?:operation[-.][a-z0-9-]+(?:_(?:error|skipped))?|GearFlow\\.Contracts\\.Operation\\.V1:[A-Za-z][A-Za-z0-9]*|MassTransit:(?:ReceiveFault|Fault(?:--GearFlow\\.Contracts\\.Operation\\.V1:[A-Za-z][A-Za-z0-9]*--)?)|[A-Za-z0-9_-]+_bus_[A-Za-z0-9]+)$"
+    },
+    {
+      "name": "gearflow_inventory",
+      "configure": "^(?:inventory[-.][a-z0-9-]+(?:_(?:error|skipped))?|GearFlow\\.Contracts:[A-Za-z][A-Za-z0-9]*|MassTransit:(?:ReceiveFault|Fault(?:--GearFlow\\.Contracts:[A-Za-z][A-Za-z0-9]*--)?)|[A-Za-z0-9_-]+_bus_[A-Za-z0-9]+)$",
+      "write": "^(?:inventory[-.][a-z0-9-]+(?:_(?:error|skipped))?|GearFlow\\.Contracts:[A-Za-z][A-Za-z0-9]*|MassTransit:(?:ReceiveFault|Fault(?:--GearFlow\\.Contracts:[A-Za-z][A-Za-z0-9]*--)?)|[A-Za-z0-9_-]+_bus_[A-Za-z0-9]+)$",
+      "read": "^(?:inventory[-.][a-z0-9-]+(?:_(?:error|skipped))?|GearFlow\\.Contracts:[A-Za-z][A-Za-z0-9]*|MassTransit:(?:ReceiveFault|Fault(?:--GearFlow\\.Contracts:[A-Za-z][A-Za-z0-9]*--)?)|[A-Za-z0-9_-]+_bus_[A-Za-z0-9]+)$"
+    },
+    {
+      "name": "gearflow_os",
+      "configure": "^(?:gearflow\\.(?:events(?:\\.v1)?|commands\\.v1|os-service)|operation\\.[a-z-]+|inventory\\.stock-[a-z-]+|operation-(?:start-(?:diagnostic|execution)|cancel-operation)|inventory-(?:reserve|release|consume)-stock)$",
+      "write": "^(?:amq\\.default|gearflow\\.commands\\.v1|gearflow\\.events|gearflow\\.os\\-service)$",
+      "read": "^(?:gearflow\\.events|gearflow\\.events\\.v1|gearflow\\.os\\-service|operation\\.[a-z-]+|inventory\\.stock-[a-z-]+)$"
+    },
+    {
+      "name": "gearflow_budget",
+      "configure": "^(?:gearflow\\.billing\\.commands\\.v1|gearflow\\.billing\\.commands\\.v1\\.dlq|gearflow\\.commands\\.v1|gearflow\\.deadletters\\.v1|gearflow\\.events\\.v1|gearflow\\.os\\.billing\\.events\\.v1)$",
+      "write": "^(?:gearflow\\.billing\\.commands\\.v1|gearflow\\.billing\\.commands\\.v1\\.dlq|gearflow\\.commands\\.v1|gearflow\\.deadletters\\.v1|gearflow\\.events\\.v1|gearflow\\.os\\.billing\\.events\\.v1)$",
+      "read": "^(?:gearflow\\.billing\\.commands\\.v1|gearflow\\.billing\\.commands\\.v1\\.dlq|gearflow\\.commands\\.v1|gearflow\\.deadletters\\.v1|gearflow\\.events\\.v1|gearflow\\.os\\.billing\\.events\\.v1)$"
+    }
   ]
 }
