@@ -1,18 +1,837 @@
 {
-  "vhosts": [{ "name": "gearflow" }],
+  "vhosts": [
+    {
+      "name": "gearflow"
+    }
+  ],
   "exchanges": [
-    { "name": "gearflow.events", "vhost": "gearflow", "type": "topic", "durable": true, "auto_delete": false, "internal": false, "arguments": {} },
-    { "name": "gearflow.dead-letter", "vhost": "gearflow", "type": "direct", "durable": true, "auto_delete": false, "internal": false, "arguments": {} }
+    {
+      "name": "gearflow.events",
+      "vhost": "gearflow",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "gearflow.commands.v1",
+      "vhost": "gearflow",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "gearflow.events.v1",
+      "vhost": "gearflow",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "gearflow.deadletters.v1",
+      "vhost": "gearflow",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "operation.diagnostic-queued",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "operation.diagnostic-started",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "operation.diagnostic-finished",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "operation.diagnostic-failed",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "operation.execution-authorized",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "operation.execution-started",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "operation.job-executed",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "operation.execution-finished",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "operation.vehicle-updated",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "operation.deactivated",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "operation.canceled",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "operation.command-rejected",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "operation.cancellation-rejected",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "operation-start-diagnostic",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "GearFlow.Contracts.Operation.V1:StartDiagnostic",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "operation-start-execution",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "GearFlow.Contracts.Operation.V1:StartExecution",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "operation-cancel-operation",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "GearFlow.Contracts.Operation.V1:CancelOperation",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "operation-update-vehicle",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "GearFlow.Contracts.Operation.V1:UpdateOperationVehicle",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "operation-deactivate",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "GearFlow.Contracts.Operation.V1:DeactivateOperation",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "inventory.stock-reserved",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "inventory.stock-insufficient",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "inventory.stock-released",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "inventory.stock-consumed",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "inventory.stock-replenished",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "inventory.low-stock-alert",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "inventory-reserve-stock",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "GearFlow.Contracts:ReserveStock",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "inventory-release-stock",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "GearFlow.Contracts:ReleaseStock",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "inventory-consume-stock",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "GearFlow.Contracts:ConsumeStock",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "inventory-low-stock-alert-email",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "inventory-stock-insufficient-email",
+      "vhost": "gearflow",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
   ],
   "queues": [
-    { "name": "gearflow.budget.order-created.v1", "vhost": "gearflow", "durable": true, "auto_delete": false, "arguments": { "x-queue-type": "classic" } },
-    { "name": "gearflow.budget.order-created.v1.dlq", "vhost": "gearflow", "durable": true, "auto_delete": false, "arguments": { "x-queue-type": "classic" } }
+    {
+      "name": "gearflow.os-service",
+      "vhost": "gearflow",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "classic"
+      }
+    },
+    {
+      "name": "gearflow.billing.commands.v1",
+      "vhost": "gearflow",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum"
+      }
+    },
+    {
+      "name": "gearflow.billing.commands.v1.dlq",
+      "vhost": "gearflow",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum"
+      }
+    },
+    {
+      "name": "gearflow.os.billing.events.v1",
+      "vhost": "gearflow",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum"
+      }
+    },
+    {
+      "name": "operation-start-diagnostic",
+      "vhost": "gearflow",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "classic"
+      }
+    },
+    {
+      "name": "operation-start-execution",
+      "vhost": "gearflow",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "classic"
+      }
+    },
+    {
+      "name": "operation-cancel-operation",
+      "vhost": "gearflow",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "classic"
+      }
+    },
+    {
+      "name": "operation-update-vehicle",
+      "vhost": "gearflow",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "classic"
+      }
+    },
+    {
+      "name": "operation-deactivate",
+      "vhost": "gearflow",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "classic"
+      }
+    },
+    {
+      "name": "inventory-reserve-stock",
+      "vhost": "gearflow",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "classic"
+      }
+    },
+    {
+      "name": "inventory-release-stock",
+      "vhost": "gearflow",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "classic"
+      }
+    },
+    {
+      "name": "inventory-consume-stock",
+      "vhost": "gearflow",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "classic"
+      }
+    },
+    {
+      "name": "inventory-low-stock-alert-email",
+      "vhost": "gearflow",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "classic"
+      }
+    },
+    {
+      "name": "inventory-stock-insufficient-email",
+      "vhost": "gearflow",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "classic"
+      }
+    }
   ],
   "bindings": [
-    { "source": "gearflow.events", "vhost": "gearflow", "destination": "gearflow.budget.order-created.v1", "destination_type": "queue", "routing_key": "os.order-created.v1", "arguments": {} },
-    { "source": "gearflow.dead-letter", "vhost": "gearflow", "destination": "gearflow.budget.order-created.v1.dlq", "destination_type": "queue", "routing_key": "budget.order-created.v1.failed", "arguments": {} }
+    {
+      "source": "gearflow.commands.v1",
+      "vhost": "gearflow",
+      "destination": "gearflow.billing.commands.v1",
+      "destination_type": "queue",
+      "routing_key": "billing.GenerateBudget",
+      "arguments": {}
+    },
+    {
+      "source": "gearflow.commands.v1",
+      "vhost": "gearflow",
+      "destination": "gearflow.billing.commands.v1",
+      "destination_type": "queue",
+      "routing_key": "billing.RequestPayment",
+      "arguments": {}
+    },
+    {
+      "source": "gearflow.commands.v1",
+      "vhost": "gearflow",
+      "destination": "gearflow.billing.commands.v1",
+      "destination_type": "queue",
+      "routing_key": "billing.CancelBudget",
+      "arguments": {}
+    },
+    {
+      "source": "gearflow.commands.v1",
+      "vhost": "gearflow",
+      "destination": "gearflow.billing.commands.v1",
+      "destination_type": "queue",
+      "routing_key": "billing.RefundPayment",
+      "arguments": {}
+    },
+    {
+      "source": "gearflow.deadletters.v1",
+      "vhost": "gearflow",
+      "destination": "gearflow.billing.commands.v1.dlq",
+      "destination_type": "queue",
+      "routing_key": "gearflow.billing.commands.v1",
+      "arguments": {}
+    },
+    {
+      "source": "gearflow.events.v1",
+      "vhost": "gearflow",
+      "destination": "gearflow.os.billing.events.v1",
+      "destination_type": "queue",
+      "routing_key": "gearflow-budget-service.*",
+      "arguments": {}
+    },
+    {
+      "source": "gearflow.events.v1",
+      "vhost": "gearflow",
+      "destination": "gearflow.os-service",
+      "destination_type": "queue",
+      "routing_key": "gearflow-budget-service.*",
+      "arguments": {}
+    },
+    {
+      "source": "gearflow.events",
+      "vhost": "gearflow",
+      "destination": "gearflow.os-service",
+      "destination_type": "queue",
+      "routing_key": "budget.generated",
+      "arguments": {}
+    },
+    {
+      "source": "gearflow.events",
+      "vhost": "gearflow",
+      "destination": "gearflow.os-service",
+      "destination_type": "queue",
+      "routing_key": "budget.approved",
+      "arguments": {}
+    },
+    {
+      "source": "gearflow.events",
+      "vhost": "gearflow",
+      "destination": "gearflow.os-service",
+      "destination_type": "queue",
+      "routing_key": "budget.rejected",
+      "arguments": {}
+    },
+    {
+      "source": "gearflow.events",
+      "vhost": "gearflow",
+      "destination": "gearflow.os-service",
+      "destination_type": "queue",
+      "routing_key": "operation.completed",
+      "arguments": {}
+    },
+    {
+      "source": "operation-start-diagnostic",
+      "vhost": "gearflow",
+      "destination": "operation-start-diagnostic",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "GearFlow.Contracts.Operation.V1:StartDiagnostic",
+      "vhost": "gearflow",
+      "destination": "operation-start-diagnostic",
+      "destination_type": "exchange",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "operation-start-execution",
+      "vhost": "gearflow",
+      "destination": "operation-start-execution",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "GearFlow.Contracts.Operation.V1:StartExecution",
+      "vhost": "gearflow",
+      "destination": "operation-start-execution",
+      "destination_type": "exchange",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "operation-cancel-operation",
+      "vhost": "gearflow",
+      "destination": "operation-cancel-operation",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "GearFlow.Contracts.Operation.V1:CancelOperation",
+      "vhost": "gearflow",
+      "destination": "operation-cancel-operation",
+      "destination_type": "exchange",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "operation-update-vehicle",
+      "vhost": "gearflow",
+      "destination": "operation-update-vehicle",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "GearFlow.Contracts.Operation.V1:UpdateOperationVehicle",
+      "vhost": "gearflow",
+      "destination": "operation-update-vehicle",
+      "destination_type": "exchange",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "operation-deactivate",
+      "vhost": "gearflow",
+      "destination": "operation-deactivate",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "GearFlow.Contracts.Operation.V1:DeactivateOperation",
+      "vhost": "gearflow",
+      "destination": "operation-deactivate",
+      "destination_type": "exchange",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "operation.diagnostic-finished",
+      "vhost": "gearflow",
+      "destination": "gearflow.os-service",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "operation.diagnostic-failed",
+      "vhost": "gearflow",
+      "destination": "gearflow.os-service",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "operation.execution-finished",
+      "vhost": "gearflow",
+      "destination": "gearflow.os-service",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "operation.canceled",
+      "vhost": "gearflow",
+      "destination": "gearflow.os-service",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "operation.command-rejected",
+      "vhost": "gearflow",
+      "destination": "gearflow.os-service",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "inventory-reserve-stock",
+      "vhost": "gearflow",
+      "destination": "inventory-reserve-stock",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "GearFlow.Contracts:ReserveStock",
+      "vhost": "gearflow",
+      "destination": "inventory-reserve-stock",
+      "destination_type": "exchange",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "inventory-release-stock",
+      "vhost": "gearflow",
+      "destination": "inventory-release-stock",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "GearFlow.Contracts:ReleaseStock",
+      "vhost": "gearflow",
+      "destination": "inventory-release-stock",
+      "destination_type": "exchange",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "inventory-consume-stock",
+      "vhost": "gearflow",
+      "destination": "inventory-consume-stock",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "GearFlow.Contracts:ConsumeStock",
+      "vhost": "gearflow",
+      "destination": "inventory-consume-stock",
+      "destination_type": "exchange",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "inventory-low-stock-alert-email",
+      "vhost": "gearflow",
+      "destination": "inventory-low-stock-alert-email",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "inventory.low-stock-alert",
+      "vhost": "gearflow",
+      "destination": "inventory-low-stock-alert-email",
+      "destination_type": "exchange",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "inventory-stock-insufficient-email",
+      "vhost": "gearflow",
+      "destination": "inventory-stock-insufficient-email",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "inventory.stock-insufficient",
+      "vhost": "gearflow",
+      "destination": "inventory-stock-insufficient-email",
+      "destination_type": "exchange",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "inventory.stock-reserved",
+      "vhost": "gearflow",
+      "destination": "gearflow.os-service",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "inventory.stock-insufficient",
+      "vhost": "gearflow",
+      "destination": "gearflow.os-service",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "inventory.stock-released",
+      "vhost": "gearflow",
+      "destination": "gearflow.os-service",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "inventory.stock-consumed",
+      "vhost": "gearflow",
+      "destination": "gearflow.os-service",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "inventory.stock-replenished",
+      "vhost": "gearflow",
+      "destination": "gearflow.os-service",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    }
   ],
-  "policies": [
-    { "name": "budget-order-created-dead-letter", "vhost": "gearflow", "pattern": "^gearflow\\.budget\\.order-created\\.v1$", "apply-to": "queues", "definition": { "dead-letter-exchange": "gearflow.dead-letter", "dead-letter-routing-key": "budget.order-created.v1.failed" }, "priority": 10 }
-  ]
+  "policies": []
 }

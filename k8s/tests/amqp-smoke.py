@@ -1,9 +1,8 @@
-"""Teste com Pika 1.3.2; filas sinteticas criadas pelo operador, sem declarar topologia."""
+"""Pika 1.3.2: contratos/ACL em vhost temporario; nunca consome filas de negocio."""
 import json
 import logging
 import os
 import socket
-import ssl
 import time
 
 logging.disable(logging.CRITICAL)
@@ -21,31 +20,44 @@ def blocked_port(port):
 
 
 if PHASE == "network-denied":
-    blocked_port(5671)
+    blocked_port(5672)
     print("PASS: origem sem autorizacao de rede bloqueada", flush=True)
     raise SystemExit(0)
 
 import pika
 
 with open("/credentials/users.json", encoding="utf-8-sig") as source:
-    USERS = json.load(source)
-RUN_ID = os.environ["RUN_ID"]
-
-
-def queue(service):
-    return f"gearflow.{service}.smoke.{RUN_ID}"
+    SETTINGS = json.load(source)
 
 
 def connect(service, password=None):
-    user = f"gearflow_{service}"
-    context = ssl.create_default_context(cafile="/ca/ca.crt")
+    user = SETTINGS["users"][service]
     return pika.BlockingConnection(pika.ConnectionParameters(
-        host=HOST, port=5671, virtual_host="gearflow",
-        credentials=pika.PlainCredentials(user, password if password is not None else USERS[user]),
-        ssl_options=pika.SSLOptions(context, HOST), heartbeat=30,
-        socket_timeout=5, stack_timeout=12, blocked_connection_timeout=10,
-        connection_attempts=1,
+        host=HOST, port=5672, virtual_host=SETTINGS["vhost"],
+        credentials=pika.PlainCredentials(user["username"], password or user["password"]),
+        heartbeat=30, socket_timeout=5, stack_timeout=12, blocked_connection_timeout=10, connection_attempts=1,
     ))
+
+
+def publish(service, exchange, route, body):
+    with connect(service) as connection:
+        channel = connection.channel()
+        channel.confirm_delivery()
+        channel.basic_publish(exchange, route, body, mandatory=True,
+                              properties=pika.BasicProperties(delivery_mode=2, content_type="application/json"))
+
+
+def consume(service, queue, expected):
+    with connect(service) as connection:
+        channel = connection.channel()
+        for _ in range(30):
+            method, properties, body = channel.basic_get(queue, auto_ack=False)
+            if method:
+                assert body == expected and properties.delivery_mode == 2
+                channel.basic_ack(method.delivery_tag)
+                return
+            time.sleep(0.2)
+    raise AssertionError("Mensagem de teste ausente: " + queue)
 
 
 def denied(service, action):
@@ -55,79 +67,44 @@ def denied(service, action):
         try:
             action(channel)
         except pika.exceptions.ChannelClosedByBroker as error:
-            assert error.reply_code == 403, f"Resposta inesperada: {error.reply_code}"
+            assert error.reply_code == 403
             return
-    raise AssertionError("Operacao nao autorizada foi aceita")
-
-
-def publish(channel, service, body):
-    channel.confirm_delivery()
-    channel.basic_publish(
-        exchange="gearflow.events", routing_key=f"smoke.{RUN_ID}.{service}",
-        body=body, mandatory=True,
-        properties=pika.BasicProperties(delivery_mode=2, message_id=f"{RUN_ID}-{service}"),
-    )
-
-
-def get_message(channel, name):
-    for _ in range(20):
-        method, properties, body = channel.basic_get(name, auto_ack=False)
-        if method:
-            return method, properties, body
-        time.sleep(0.25)
-    raise AssertionError("Mensagem de teste nao encontrada")
+    raise AssertionError("Operacao nao autorizada aceita: " + service)
 
 
 if PHASE == "verify":
+    publish("os", "gearflow.commands.v1", "billing.CancelBudget", b"billing-command-smoke")
+    consume("budget", "gearflow.billing.commands.v1", b"billing-command-smoke")
+    publish("budget", "gearflow.events.v1", "gearflow-budget-service.BudgetCanceled", b"billing-event-smoke")
+    consume("os", "gearflow.os-service", b"billing-event-smoke")
+    consume("budget", "gearflow.os.billing.events.v1", b"billing-event-smoke")
+    publish("budget", "gearflow.deadletters.v1", "gearflow.billing.commands.v1", b"explicit-dlq-smoke")
+    consume("budget", "gearflow.billing.commands.v1.dlq", b"explicit-dlq-smoke")
+    for service, queue, event in (("operation", "operation-start-diagnostic", "operation.diagnostic-finished"),
+                                  ("inventory", "inventory-reserve-stock", "inventory.stock-reserved")):
+        publish("os", "", queue, b"direct-command-smoke")
+        consume(service, queue, b"direct-command-smoke")
+        publish(service, event, "", b"fanout-event-smoke")
+        consume("os", "gearflow.os-service", b"fanout-event-smoke")
     for service in ("os", "budget", "operation", "inventory"):
-        with connect(service) as connection:
-            channel = connection.channel()
-            publish(channel, service, f"smoke-{service}".encode())
-            method, properties, body = get_message(channel, queue(service))
-            assert body == f"smoke-{service}".encode() and properties.delivery_mode == 2
-            channel.basic_ack(method.delivery_tag)
-        other = "budget" if service != "budget" else "os"
-        denied(service, lambda channel: channel.basic_get(queue(other)))
-        denied(service, lambda channel: channel.basic_get(queue(service) + ".dlq"))
-        denied(service, lambda channel: channel.queue_declare(queue(service) + ".forbidden", durable=True))
-        denied(service, lambda channel: channel.basic_publish(exchange="", routing_key=queue(service), body=b"denied"))
-        print(f"PASS: {service}: publish/consume/ack, isolamento de filas, DLQ e administracao negados", flush=True)
-    for trusted, name in ((False, HOST), (True, "invalid.gearflow.test")):
-        context = ssl.create_default_context(cafile="/ca/ca.crt" if trusted else None)
-        try:
-            with socket.create_connection((HOST, 5671), timeout=5) as raw:
-                with context.wrap_socket(raw, server_hostname=name):
-                    pass
-        except ssl.SSLCertVerificationError:
-            continue
-        raise AssertionError("Certificado/hostname incorreto foi aceito")
+        foreign = "operation-start-diagnostic" if service == "os" else "gearflow.os-service"
+        denied(service, lambda channel: channel.basic_get(foreign))
+        denied(service, lambda channel: channel.queue_declare("unauthorized.queue", durable=True))
     try:
         connection = connect("os", password="invalid-smoke-password")
     except pika.exceptions.ProbableAuthenticationError:
         pass
     else:
         connection.close()
-        raise AssertionError("Senha incorreta foi aceita")
-    blocked_port(5672)
+        raise AssertionError("Senha incorreta aceita")
+    blocked_port(5671)
     blocked_port(15672)
-    print("PASS: TLS/credencial invalidos rejeitados; AMQP sem TLS e painel inacessiveis pela rede", flush=True)
-    with connect("budget") as connection:
-        channel = connection.channel()
-        publish(channel, "budget", b"dead-letter-smoke")
-        method, _, body = get_message(channel, queue("budget"))
-        assert body == b"dead-letter-smoke"
-        channel.basic_nack(method.delivery_tag, requeue=False)
-    print("PASS: mensagem rejeitada sem requeue; verificar DLQ com operador", flush=True)
+    print("PASS: rotas topic/fanout/default, DLQ explicita, ACL e senha incorreta; painel/TLS bloqueados", flush=True)
 elif PHASE == "publish-persistence":
-    with connect("os") as connection:
-        publish(connection.channel(), "os", b"persistent-across-pod-recreation")
-    print("PASS: mensagem persistente publicada com publisher confirm", flush=True)
+    publish("os", "", "inventory-consume-stock", b"persistent-across-pod-recreation")
+    print("PASS: mensagem persistente publicada com confirm no vhost isolado", flush=True)
 elif PHASE == "consume-persistence":
-    with connect("os") as connection:
-        channel = connection.channel()
-        method, properties, body = get_message(channel, queue("os"))
-        assert body == b"persistent-across-pod-recreation" and properties.delivery_mode == 2
-        channel.basic_ack(method.delivery_tag)
-    print("PASS: mensagem persistente recuperada depois de recriar o Pod RabbitMQ", flush=True)
+    consume("inventory", "inventory-consume-stock", b"persistent-across-pod-recreation")
+    print("PASS: mensagem recuperada depois de recriar o Pod RabbitMQ", flush=True)
 else:
-    raise AssertionError("Fase de teste desconhecida")
+    raise AssertionError("Fase desconhecida")

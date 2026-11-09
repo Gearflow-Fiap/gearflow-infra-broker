@@ -10,6 +10,8 @@ $auth=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("$($admin.usernam
 $headers=@{Authorization="Basic $auth"}
 $allowed='gearflow-broker-validation'
 $blocked='gearflow-broker-blocked'
+$testVhost="gearflow-smoke-$runId"
+$testUsers=@()
 $forward=$null
 function K { $result=kubectl --kubeconfig .local/kubeconfig @args; if($LASTEXITCODE){throw 'Comando Kubernetes falhou'}; $result }
 function Send-Object($object) { $object|ConvertTo-Json -Depth 30|kubectl --kubeconfig .local/kubeconfig apply -f -; if($LASTEXITCODE){throw 'Falha ao aplicar recurso de teste'} }
@@ -31,9 +33,7 @@ function Run-Job($name,$phase,$namespace=$allowed,[bool]$label=$true) {
     $mounts=@(@{name='code';mountPath='/tests';readOnly=$true})
     if($phase -ne 'network-denied'){
         $volumes+=@{name='credentials';secret=@{secretName='broker-validation-users'}}
-        $volumes+=@{name='ca';configMap=@{name='broker-validation-ca'}}
         $mounts+=@{name='credentials';mountPath='/credentials';readOnly=$true}
-        $mounts+=@{name='ca';mountPath='/ca';readOnly=$true}
     }
     $container=@{name='test';image='python:3.12-alpine';command=@('sh','-ec','if [ "$PHASE" != network-denied ]; then pip install --disable-pip-version-check --quiet --target /tmp/deps pika==1.3.2; fi; PYTHONPATH=/tmp/deps python /tests/amqp-smoke.py');env=@(@{name='PHASE';value=$phase},@{name='RUN_ID';value=$runId});volumeMounts=$mounts;resources=@{requests=@{cpu='50m';memory='64Mi'};limits=@{cpu='250m';memory='192Mi'}}}
     Send-Object @{apiVersion='batch/v1';kind='Job';metadata=@{name=$name;namespace=$namespace};spec=@{backoffLimit=0;activeDeadlineSeconds=240;template=@{metadata=@{labels=$labels};spec=@{restartPolicy='Never';automountServiceAccountToken=$false;containers=@($container);volumes=$volumes}}}}
@@ -48,8 +48,23 @@ function Run-Job($name,$phase,$namespace=$allowed,[bool]$label=$true) {
 }
 try {
     Open-Tunnel
-    $credential=[pscredential]::new($admin.username,(ConvertTo-SecureString $admin.password -AsPlainText -Force))
-    & ./scripts/Set-BrokerServiceUsers.ps1 -ManagementPort $port -AdminCredential $credential
+    # Topologia real em vhost isolado: nunca consumir mensagens das filas das aplicacoes.
+    $null=Api PUT "vhosts/$testVhost" @{}
+    $definitions=Get-Content rabbitmq/definitions.json -Raw|ConvertFrom-Json
+    $definitions.vhosts[0].name=$testVhost
+    foreach($kind in @('exchanges','queues','bindings','policies')){foreach($item in $definitions.$kind){$item.vhost=$testVhost}}
+    $null=Api POST definitions $definitions
+    $users=@{}
+    $policy=Get-Content rabbitmq/service-permissions.json -Raw|ConvertFrom-Json
+    foreach($rule in $policy.users){
+        $service=$rule.name.Replace('gearflow_','')
+        $name="gearflow_smoke_${runId}_$service"
+        $password=[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(24))
+        $null=Api PUT "users/$name" @{password=$password;tags=@()}
+        $testUsers+= $name
+        $null=Api PUT "permissions/$testVhost/$name" @{configure=$rule.configure;write=$rule.write;read=$rule.read}
+        $users[$service]=@{username=$name;password=$password}
+    }
     foreach($namespace in @($allowed,$blocked)){
         $existing=K get namespace $namespace --ignore-not-found -o name
         if($existing){throw "Namespace de teste ja existe; revisar antes de reutilizar: $namespace"}
@@ -57,20 +72,9 @@ try {
         Send-Object @{apiVersion='v1';kind='Namespace';metadata=@{name=$namespace;labels=$labels}}
         K -n $namespace create configmap broker-validation-code --from-file=amqp-smoke.py=k8s/tests/amqp-smoke.py
     }
-    $users=Get-Content .local/service-credentials.json -Raw
-    Send-Object @{apiVersion='v1';kind='Secret';metadata=@{name='broker-validation-users';namespace=$allowed};type='Opaque';stringData=@{'users.json'=$users}}
-    K -n $allowed create configmap broker-validation-ca --from-file=ca.crt=.local/tls/ca.crt
-    foreach($service in @('os','budget','operation','inventory')){
-        $name="gearflow.$service.smoke.$runId"
-        $null=Api PUT "queues/gearflow/$name" @{durable=$true;auto_delete=$false;arguments=@{'x-queue-type'='classic';'x-dead-letter-exchange'='gearflow.dead-letter';'x-dead-letter-routing-key'="smoke.$runId.$service.failed"}}
-        $null=Api PUT "queues/gearflow/$name.dlq" @{durable=$true;auto_delete=$false;arguments=@{'x-queue-type'='classic'}}
-        $null=Api POST "bindings/gearflow/e/gearflow.events/q/$name" @{routing_key="smoke.$runId.$service";arguments=@{}}
-        $null=Api POST "bindings/gearflow/e/gearflow.dead-letter/q/$name.dlq" @{routing_key="smoke.$runId.$service.failed";arguments=@{}}
-    }
+    $credentials=@{vhost=$testVhost;users=$users}|ConvertTo-Json -Depth 6 -Compress
+    Send-Object @{apiVersion='v1';kind='Secret';metadata=@{name='broker-validation-users';namespace=$allowed};type='Opaque';stringData=@{'users.json'=$credentials}}
     Run-Job 'verify-amqp' 'verify'
-    $dead=@(Api POST "queues/gearflow/gearflow.budget.smoke.$runId.dlq/get" @{count=1;ackmode='ack_requeue_false';encoding='auto'} | ForEach-Object{$_})
-    if($dead.Count -ne 1 -or $dead[0].payload -ne 'dead-letter-smoke'){throw 'DLQ nao recebeu a mensagem rejeitada'}
-    Write-Host 'PASS: DLQ recebeu mensagem rejeitada por AMQP.'
     Run-Job 'denied-pod-label' 'network-denied' $allowed $false
     Run-Job 'denied-namespace-label' 'network-denied' $blocked $true
     if ($RestartBroker) {
@@ -85,13 +89,13 @@ try {
     Run-Job 'consume-persistence' 'consume-persistence'
     } else { Write-Host 'Persistencia nao testada nesta execucao; use -RestartBroker em janela sem consumidores.' }
     Open-Tunnel
-    foreach($service in @('os','budget','operation','inventory')){
-        $name="gearflow.$service.smoke.$runId"
-        $null=Api DELETE "queues/gearflow/$name"
-        $null=Api DELETE "queues/gearflow/$name.dlq"
-    }
+    $null=Api DELETE "vhosts/$testVhost"
+    foreach($name in $testUsers){$null=Api DELETE "users/$name"}
     K delete namespace $allowed $blocked --wait=true --timeout=120s
-    Write-Host 'PASS: testes concluidos; filas, namespaces, Secrets e Jobs temporarios removidos.'
+    Write-Host 'PASS: testes concluidos; vhost, usuarios, namespaces, Secrets e Jobs temporarios removidos.'
+} catch {
+    Write-Warning "Teste interrompido: revisar vhost $testVhost, usuarios gearflow_smoke_${runId}_* e namespaces $allowed/$blocked antes de repetir."
+    throw
 } finally {
     if($forward -and -not $forward.HasExited){$forward.Kill();$forward.WaitForExit()}
     $headers.Clear()

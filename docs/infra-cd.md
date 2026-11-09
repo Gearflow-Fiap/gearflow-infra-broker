@@ -44,7 +44,7 @@ Nao ha modo destroy neste pipeline. O encerramento do laboratorio continua pelo 
 ## Limites
 
 - Nao executar Terraform local nem alterar o endpoint enquanto o coordenador estiver em execucao. O grupo GitHub coordena este repositorio; outros repositorios/operadores precisam de coordenacao adicional. O locking do HCP protege o state, mas nao substitui a coordenacao com o job Kubernetes.
-- O primeiro bootstrap de um cluster novo ainda exige Secrets TLS/admin e usuarios do RabbitMQ conforme etapa 3. Recriar EKS pelo pipeline nao inventa essas credenciais; o job do broker falha de forma explicita se elas faltarem.
+- O job do broker executa bootstrap de Secrets de credenciais/admin e usuarios ausentes, inclusive depois de recriar o EKS. Usa AMQP interno na porta 5672 sem TLS/certificados. Credenciais existentes sao verificadas/preservadas. A instalacao antiga exige migracao local uma vez, conforme lifecycle.md; credenciais perdidas/divergentes continuam exigindo revisao.
 - Apos um apply longo, a sessao Academy pode expirar antes do broker/limpeza do endpoint; atualizar secrets e diagnosticar. A recuperacao do /32 esta em cd.md.
 - Nenhum state, plan binario/JSON completo ou configuracao privada Terraform e enviado como artifact. O resumo inclui somente metadados de revisao e hash; o artifact de recuperacao de endpoint nao contem o state Terraform.
 

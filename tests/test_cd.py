@@ -112,7 +112,7 @@ class TopologyTests(unittest.TestCase):
                           "arguments": []} for item in self.expected["bindings"]],
         }
         for item in self.actual["queues"]:
-            item["arguments"] = [["x-queue-type", "longstr", "classic"]]
+            item["arguments"] = [[key, "longstr", value] for key, value in item["arguments"].items()]
         for item in self.actual["policies"]:
             item["definition"] = json.dumps(item["definition"])
 
@@ -128,8 +128,8 @@ class TopologyTests(unittest.TestCase):
         self.actual["bindings"].pop()
         self.assertFalse(topology_matches(self.expected, self.actual))
 
-    def test_changed_dead_letter_policy_is_detected(self):
-        self.actual["policies"][0]["definition"] = '{}'
+    def test_changed_event_exchange_type_is_detected(self):
+        self.actual["exchanges"][0]["type"] = 'fanout'
         self.assertFalse(topology_matches(self.expected, self.actual))
 
 

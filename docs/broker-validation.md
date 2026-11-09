@@ -1,5 +1,7 @@
 # Etapa 3 — RabbitMQ no EKS
 
+Registro histórico de 05/11/2026, quando TLS estava habilitado. Em 08/11/2026, o grupo decidiu usar AMQP interno sem TLS na porta 5672. A configuração e os testes atuais estão em [Kubernetes](../k8s/README.md); a mudança ainda não foi validada no EKS. Os resultados abaixo descrevem somente a instalação anterior.
+
 Implantacao e validacao concluidas em 05/11/2026 no cluster gearflow-fase4, us-east-1. Sem implantacao dos microsservicos ou aprovacao de contratos de negocio nesta etapa.
 
 ## Estado implantado

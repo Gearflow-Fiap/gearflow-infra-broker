@@ -3,12 +3,13 @@
 .SYNOPSIS
 Gera uma previa de destruicao; somente -Execute -ConfirmClusterName NOME aplica.
 .DESCRIPTION
-Usa exclusivamente o state do workspace configurado neste repositorio. Nao remove volumes de aplicacoes
-automaticamente. Bloqueia se encontrar PVCs, PVs, LoadBalancers ou Ingresses.
+Usa o state do workspace configurado. -DiscardRabbitMqData autoriza remover somente
+o PVC/PV/EBS do RabbitMQ. Outros volumes, LoadBalancers e Ingresses continuam bloqueados.
 #>
 param(
     [switch]$Execute,
     [string]$ConfirmClusterName,
+    [switch]$DiscardRabbitMqData,
     [string]$Profile = 'academy',
     [string]$VariablesFile = 'academy.tfvars.json'
 )
@@ -16,6 +17,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $clusterDirectory = Join-Path $root 'infra/cluster'
 $previousProfile = $env:AWS_PROFILE
+$previousKubeconfig = $env:KUBECONFIG
 $env:AWS_PROFILE = $Profile
 function Invoke-Checked {
     param([string]$Command, [string[]]$Arguments)
@@ -36,7 +38,6 @@ try {
     $stateText = Invoke-Checked terraform @("-chdir=$clusterDirectory", 'show', '-json')
     $state = $stateText | ConvertFrom-Json
     $resources = @($state.values.root_module.resources | Where-Object mode -eq managed)
-    if (-not $resources.Count) { Write-Host 'State sem recursos gerenciados. Nada para destruir.'; return }
     if ($state.values.root_module.child_modules) { throw 'State contem modulos nao previstos; revisar alvos antes de destruir.' }
     $expected = @('aws_vpc.this', 'aws_internet_gateway.this', 'aws_subnet.public[0]', 'aws_subnet.public[1]',
         'aws_route_table.public', 'aws_route_table_association.public[0]', 'aws_route_table_association.public[1]',
@@ -61,6 +62,7 @@ try {
         $kubeconfig = Join-Path $localDirectory 'kubeconfig'
         $null = Invoke-Checked aws @('eks', 'update-kubeconfig', '--name', $clusterName, '--region', $region,
             '--profile', $Profile, '--kubeconfig', $kubeconfig, '--alias', 'gearflow-destroy-check')
+        $env:KUBECONFIG=$kubeconfig
         $objectsText = Invoke-Checked kubectl @('--kubeconfig', $kubeconfig, '--context', 'gearflow-destroy-check',
             'get', 'pvc,pv,services,ingresses', '--all-namespaces', '-o', 'json', '--request-timeout=30s')
         $objects = $objectsText | ConvertFrom-Json
@@ -68,26 +70,48 @@ try {
             $_.kind -in @('PersistentVolumeClaim', 'PersistentVolume', 'Ingress') -or
             ($_.kind -eq 'Service' -and $_.spec.type -eq 'LoadBalancer')
         })
-        if ($blockers.Count) {
+        if ($blockers.Count -and -not $DiscardRabbitMqData) {
             $blockers | ForEach-Object { Write-Host "$($_.kind): $($_.metadata.namespace)/$($_.metadata.name)" }
-            throw 'Revise/remova esses recursos e seus volumes/load balancers antes de destruir o cluster. Nenhum dado foi removido pelo script.'
+            throw 'Para descartar somente os dados do RabbitMQ, acrescente -DiscardRabbitMqData. Outros volumes/load balancers exigem revisao. Nenhum dado removido.'
         }
+    }
+    $cleanupScript=Join-Path $PSScriptRoot 'cd/remove_broker.py'
+    $cleanupJournal=Join-Path $localDirectory 'rabbitmq-cleanup.json'
+    if ($DiscardRabbitMqData) {
+        & python $cleanupScript --cluster $clusterName --region $region --journal $cleanupJournal
+        if ($LASTEXITCODE) { throw 'Preflight da limpeza RabbitMQ falhou. Nada sera excluido pelo Terraform.' }
     }
     Write-Host "Alvo: $clusterName / $region. Gerando plano de destruicao do workspace configurado."
     $planPath = Join-Path $localDirectory 'cluster-destroy.tfplan'
-    $null = Invoke-Checked terraform @("-chdir=$clusterDirectory", 'plan', '-destroy', "-var-file=$variablePath", "-out=$planPath", '-input=false', '-no-color')
-    $planText = Invoke-Checked terraform @("-chdir=$clusterDirectory", 'show', '-json', $planPath)
-    $plan = $planText | ConvertFrom-Json
-    $changes = @($plan.resource_changes | Where-Object { $_.mode -eq 'managed' -and ($_.change.actions -join ',') -ne 'no-op' })
+    $changes=@()
+    if ($resources.Count) {
+        $null = Invoke-Checked terraform @("-chdir=$clusterDirectory", 'plan', '-destroy', "-var-file=$variablePath", "-out=$planPath", '-input=false', '-no-color')
+        $planText = Invoke-Checked terraform @("-chdir=$clusterDirectory", 'show', '-json', $planPath)
+        $plan = $planText | ConvertFrom-Json
+        $changes = @($plan.resource_changes | Where-Object { $_.mode -eq 'managed' -and ($_.change.actions -join ',') -ne 'no-op' })
+    }
     foreach ($change in $changes) {
         if ($change.address -notin $expected -or ($change.change.actions -join ',') -ne 'delete') { throw 'Plano contem operacao/alvo nao previsto.' }
     }
     $changes | ForEach-Object { Write-Host "Excluir: $($_.address)" }
     Write-Host "Total: $($changes.Count) recursos Terraform. Instancias e discos root gerenciados sao excluidos pelo node group."
     if (-not $Execute) {
-        Write-Host "PREVIA: nada excluido. Para executar: pwsh -File scripts/Destroy-Cluster.ps1 -Execute -ConfirmClusterName $clusterName"
+        $discardOption=if($DiscardRabbitMqData){' -DiscardRabbitMqData'}else{''}
+        Write-Host "PREVIA: nada excluido. Para executar: pwsh -File scripts/Destroy-Cluster.ps1 -Execute -ConfirmClusterName $clusterName$discardOption"
         return
     }
+    if ($DiscardRabbitMqData) {
+        & python $cleanupScript --cluster $clusterName --region $region --journal $cleanupJournal --execute --confirm-cluster $clusterName
+        if ($LASTEXITCODE) { throw 'Limpeza RabbitMQ incompleta; journal preservado. Terraform nao foi executado.' }
+        if ($clusterName -in ($clustersText | ConvertFrom-Json).clusters) {
+            $remainingObjectsText=Invoke-Checked kubectl @('--kubeconfig',$kubeconfig,'get','pvc,pv,services,ingresses','--all-namespaces','-o','json')
+            $remainingObjects=$remainingObjectsText|ConvertFrom-Json
+            if (@($remainingObjects.items|Where-Object { $_.kind -in @('PersistentVolumeClaim','PersistentVolume','Ingress') -or ($_.kind -eq 'Service' -and $_.spec.type -eq 'LoadBalancer') }).Count) {
+                throw 'Ainda existem volumes/load balancers/ingresses; Terraform bloqueado.'
+            }
+        }
+    }
+    if (-not $resources.Count) { Write-Host 'Sem recursos Terraform remanescentes; limpeza solicitada concluida.'; return }
     # Fluxo direto: exibe progresso durante a exclusao, sem acumular ate o final.
     & terraform "-chdir=$clusterDirectory" apply -input=false -no-color $planPath
     if ($LASTEXITCODE -ne 0) { throw 'Destruicao interrompida. Preserve o state e revise o erro antes de repetir.' }
@@ -97,4 +121,5 @@ try {
     Write-Host 'Recursos do state removidos. Confira na AWS discos retidos anteriormente e recursos externos; eles nao sao removidos por este script.'
 } finally {
     $env:AWS_PROFILE = $previousProfile
+    $env:KUBECONFIG = $previousKubeconfig
 }

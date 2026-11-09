@@ -8,17 +8,17 @@ RabbitMQ implantado e validado no EKS convencional, com nodes EC2 Linux e EBS CS
 - Uma instância, sem HA. Aumentar réplicas exige implementar clustering.
 - EBS gp3 criptografado, 10 GiB, RWO, binding na zona do consumidor, expansão habilitada e `Retain`. Excluir PVC/cluster não garante remover o disco nem encerrar seu custo.
 - Requests 500m CPU/1Gi; limites 2 CPU/2Gi. Alarmes de disco e memória em 1GB podem bloquear produtores. Capacidade depende de testes com os serviços reais.
-- Serviço interno `rabbitmq.messaging.svc.cluster.local:5671`, vhost `gearflow`, **AMQPS obrigatório**. Não existe listener AMQP 5672 no Kubernetes.
+- Serviço interno `rabbitmq.messaging.svc.cluster.local:5672`, vhost `gearflow`, AMQP sem TLS, com usuário/senha por serviço.
 - Painel/API em `127.0.0.1:15672` dentro do Pod, sem porta no Service e sem LoadBalancer/Ingress. Acesso administrativo por `port-forward` autenticado pelo Kubernetes.
-- NetworkPolicy permite AMQPS somente de Pods e namespaces explicitamente autorizados. Egress do broker permite apenas DNS no CoreDNS; não libera IMDS. Não altera acesso do EBS CSI às credenciais dos nodes.
+- NetworkPolicy permite AMQP somente de Pods e namespaces explicitamente autorizados. Egress do broker permite apenas DNS no CoreDNS; não libera IMDS. Não altera acesso do EBS CSI às credenciais dos nodes.
 
-O Compose local continua usando 5672 e painel 15672 limitados ao loopback da máquina. A configuração compartilhada usa TLS de servidor e usuário/senha, sem exigir certificado de cliente (mTLS). Clientes devem confiar na CA e validar o hostname; não desabilitar essas verificações.
+O Compose local usa 5672 e painel 15672 limitados ao loopback da máquina. No Kubernetes, AMQP fica somente na rede interna e o painel somente no loopback do Pod. Por decisão do grupo em 08/11/2026, o laboratório acadêmico usa dados fictícios e dispensa TLS e certificados no RabbitMQ; o enunciado da Fase 4 não os exige. Credenciais e mensagens trafegam sem criptografia AMQP. Usuários, permissões e restrições de rede continuam ativos.
 
 ## Pré-requisitos antes do deploy
 
 1. Aplicar um plano Terraform atualizado. O cluster utilizado tem EKS 1.35, dois workers e addon VPC CNI com `enableNetworkPolicy=true`.
 2. Confirmar nodes `Ready`, driver EBS ativo e teste de escrita/leitura em PVC.
-3. Confirmar VPC CNI compatível com NetworkPolicy e agente `aws-network-policy-agent` funcionando. O Terraform configura o addon antes dos workers. O modo padrão pode permitir tráfego brevemente durante a inicialização do Pod; TLS e autenticação continuam obrigatórios. Não habilitar modo strict globalmente sem preparar políticas para os demais workloads.
+3. Confirmar VPC CNI compatível com NetworkPolicy e agente `aws-network-policy-agent` funcionando. O Terraform configura o addon antes dos workers. O modo padrão pode permitir tráfego brevemente durante a inicialização do Pod; autenticação continua obrigatória. Não habilitar modo strict globalmente sem preparar políticas para os demais workloads.
 4. Confirmar contexto e permissões Kubernetes. Namespace/labels não substituem RBAC; somente operadores autorizados devem poder conceder labels de acesso, alterar políticas, executar comandos ou fazer port-forward no broker.
 
 ```powershell
@@ -30,7 +30,9 @@ kubectl kustomize k8s
 kubectl apply -f k8s/namespace.yaml
 ```
 
-## Segredos e TLS
+## Credenciais
+
+O caminho recomendado agora e `pwsh -File scripts/Start-ClusterBroker.ps1` ou o job de broker do CD. Eles fazem o bootstrap automaticamente. Os comandos manuais abaixo permanecem como referencia para administracao/recuperacao. Veja [lifecycle](../docs/lifecycle.md), incluindo a migracao da instalacao antiga para Secrets individuais.
 
 PowerShell 7, na raiz do repositório. Criar o usuário administrativo inicial fora do Git:
 
@@ -48,18 +50,9 @@ Remove-Variable brokerPassword
 
 Não sobrescrever uma instalação existente: mudar o Secret não troca os usuários persistidos. Secret Kubernetes não garante criptografia em repouso por si só.
 
-Criar certificado de laboratório e Secret TLS antes de subir o StatefulSet:
+Não é necessário gerar, distribuir ou renovar certificados. Cada serviço recebe somente sua própria senha por Secret no seu namespace. `.local/` é ignorado pelo Git, mas não é um cofre; restrinja acesso à máquina.
 
-```powershell
-pwsh -File scripts/New-BrokerTls.ps1
-kubectl -n messaging create secret generic rabbitmq-tls --from-file=ca.crt=.local/tls/ca.crt --from-file=tls.crt=.local/tls/tls.crt --from-file=tls.key=.local/tls/tls.key
-```
-
-O script usa .NET, não requer OpenSSL e gera CA privada de laboratório e certificado com SANs para o serviço Kubernetes, nomes DNS curtos e `localhost` para testes por túnel. A chave privada da CA é descartada; a chave do servidor fica apenas em `.local/tls/tls.key`. Validade padrão de 90 dias. Não sobrescreve diretório existente.
-
-`.local/` e chaves privadas são ignorados pelo Git, mas os arquivos locais não são um cofre. Restrinja acesso à conta/máquina e guarde as credenciais com segurança. Distribua **somente `ca.crt`** aos serviços, por ConfigMap ou mecanismo equivalente. Cada serviço recebe somente sua própria senha por Secret no seu namespace. Não montar a chave TLS do broker nos clientes.
-
-Renovação exige planejar a nova CA com os clientes, emitir novo certificado, atualizar o Secret, reiniciar controladamente o Pod e validar as conexões antes da expiração. O script não faz rotação automática. Um teste local pode já ter criado `.local/tls`; confira a validade antes de reaproveitar no laboratório.
+Na atualização de uma instalação antiga, o bootstrap aplica a configuração AMQP e aguarda o rollout. Depois de verificar as credenciais, remove somente o Secret `rabbitmq-tls` e o ConfigMap `rabbitmq-ca` obsoletos em `messaging`. Cópias antigas em `.local/tls` não são utilizadas nem apagadas automaticamente. Atualize também os clientes para AMQP/5672, sem CA nem TLS. O rollout do único Pod interrompe conexões; mensagens e usuários permanecem no PVC.
 
 ## Implantar e importar topologia
 
@@ -72,7 +65,7 @@ kubectl -n messaging exec rabbitmq-0 -- rabbitmqctl import_definitions /tmp/gear
 kubectl -n messaging exec rabbitmq-0 -- rabbitmqctl list_queues -p gearflow name messages consumers
 ```
 
-O import é assíncrono; confirme as filas, repetindo a consulta se necessário. A topologia de negócio continua provisória e não inclui usuários/senhas. Alterações incompatíveis exigem migração; importar novamente não remove recursos antigos.
+O import é assíncrono; confirme as filas, repetindo a consulta se necessário. A topologia reproduz os contratos atuais dos serviços, conforme [catálogo e permissões](../docs/messaging.md), sem alterar regras de negócio. Não inclui usuários/senhas. Alterações incompatíveis exigem migração; importar novamente não remove recursos antigos.
 
 ## Criar usuários dos serviços
 
@@ -92,14 +85,14 @@ O script solicita a credencial administrativa, cria quatro usuários sem tags ad
 
 | Usuário | Publicação | Consumo |
 | --- | --- | --- |
-| `gearflow_os` | `gearflow.events` | `gearflow.os.*`, exceto sufixo `.dlq` |
-| `gearflow_budget` | `gearflow.events` | `gearflow.budget.*`, exceto sufixo `.dlq` |
-| `gearflow_operation` | `gearflow.events` | `gearflow.operation.*`, exceto sufixo `.dlq` |
-| `gearflow_inventory` | `gearflow.events` | `gearflow.inventory.*`, exceto sufixo `.dlq` |
+| `gearflow_os` | `gearflow.events`, `gearflow.commands.v1`, exchange default | `gearflow.os-service` |
+| `gearflow_budget` | Exchanges de comandos/eventos/falhas Billing | Comandos Billing, sua DLQ e assinatura de eventos |
+| `gearflow_operation` | Exchanges `operation.*` e recursos MassTransit do serviço | Endpoints `operation-*` e auxiliares |
+| `gearflow_inventory` | Exchanges `inventory.*` e recursos MassTransit do serviço | Endpoints `inventory-*`, email e auxiliares |
 
-Todos ficam restritos ao vhost `gearflow`, sem criar/excluir/configurar recursos, fazer bindings, publicar diretamente na exchange padrão, consumir DLQs ou acessar o painel. A topologia é administrada pela infraestrutura. Bibliotecas que declaram filas/exchanges automaticamente devem ser configuradas para usar a topologia existente; revisar isso com o grupo.
+Todos ficam restritos ao vhost `gearflow`, sem tags administrativas nem acesso ao painel. Aplicações podem declarar/configurar seus recursos e bindings como o código atual exige. Infraestrutura pré-cria a base; MassTransit administra também seus destinos auxiliares. A permissão configure também permite excluir recursos do escopo. A OS precisa declarar seis filas dos pares e publicar na exchange default; essa autorização não limita publicação por fila. Leia os limites em [mensageria](../docs/messaging.md#permissoes-por-aplicacao).
 
-Esta é uma convenção técnica inicial: a exchange comum ainda permite qualquer routing key. Quando os contratos forem acordados, revisar nomes e adicionar permissões de tópico por produtor se necessário. Não representa aprovação dos eventos/Saga. As filas de Operation/Inventory/OS não são criadas por esse script.
+`contracts.json` registra os contratos extraídos; `definitions.json` contém filas/exchanges/bindings e `service-permissions.json` contém ACLs, gerados por `python scripts/cd/sync_topology.py`. O script de usuários aplica as ACLs; o bootstrap/CD importa a topologia. Não representa aprovação das regras da Saga.
 
 ## Autorizar workloads na rede
 
@@ -119,13 +112,15 @@ spec:
         gearflow.io/rabbitmq-client: "true"
 ```
 
-As duas labels são necessárias simultaneamente. Namespace sem label ou Pod sem label não deve conectar. Labels não comprovam identidade: RBAC deve impedir workloads não autorizados de conceder acesso a si mesmos. Se houver egress restrito nos serviços, permitir DNS e TCP 5671 para o broker também.
+As duas labels são necessárias simultaneamente. Namespace sem label ou Pod sem label não deve conectar. Labels não comprovam identidade: RBAC deve impedir workloads não autorizados de conceder acesso a si mesmos. Se houver egress restrito nos serviços, permitir DNS e TCP 5672 para o broker também.
 
-Conexão dos serviços: host `rabbitmq.messaging.svc.cluster.local`, porta `5671`, vhost `gearflow`, TLS com CA/hostname validados e usuário próprio. A URI usa esquema `amqps`; não incluir senhas em logs ou documentação.
+Conexão dos serviços: host `rabbitmq.messaging.svc.cluster.local`, porta `5672`, vhost `gearflow`, TLS desabilitado e usuário próprio. A URI usa esquema `amqp`; não incluir senhas em logs ou documentação. Em opções .NET com esse campo, usar `RabbitMq__Tls=false`. Remover montagens de CA e habilitação explícita de SSL dos deployments dos serviços que as utilizavam.
+
+Pendências nos repositórios das aplicações consultados: Inventory ainda traz porta 5671, TLS e montagem obrigatória de `rabbitmq-ca` nos manifestos; atualizar o ConfigMap e retirar esse volume/mount. Budget também traz 5671/TLS nos manifestos e a validação em `PaymentIntegrationRegistration.cs` exige TLS fora de Development: o responsável precisa adequar essa validação para o laboratório, além de configurar porta 5672, host `rabbitmq.messaging.svc.cluster.local` e vhost `gearflow`. Não trocar o ambiente inteiro para Development apenas para contornar essa validação, pois isso afeta outras configurações. Esses repositórios não foram alterados nesta mudança do infra-broker.
 
 ## Validação
 
-Antes de conectar o grupo, testar no EKS: PVC `Bound`; Pod `Ready`; AMQPS com cliente real; bloqueio de 5672 e do painel pela rede; acesso permitido somente com ambas as labels; rejeição de CA/hostname/credenciais incorretos; permissões de filas; persistência após recriação controlada do Pod. Usar Deployments/Jobs nos testes de rede, não Pods avulsos, conforme limitações do VPC CNI.
+Antes de conectar o grupo, testar no EKS: PVC `Bound`; Pod `Ready`; AMQP com cliente real; bloqueio de 5671 e do painel pela rede; acesso permitido somente com ambas as labels; rejeição de credenciais incorretas; permissões de filas; persistência após recriação controlada do Pod. Usar Deployments/Jobs nos testes de rede, não Pods avulsos, conforme limitações do VPC CNI.
 
 ```powershell
 kubectl -n messaging get networkpolicy
@@ -142,9 +137,9 @@ Validação local isolada desta configuração:
 pwsh -File scripts/Test-SharedBroker.ps1
 ```
 
-Esse teste usa container/volume descartáveis, verifica TLS, ACL cadastrada, preservação de senhas e listeners. Não prova enforcement da NetworkPolicy, cliente AMQP, Saga nem persistência no EKS. Esses testes seguem para a etapa de implantação.
+Esse teste requer .NET 10 e usa container/volume descartáveis. Verifica AMQP sem TLS, autenticação/ACL com clientes RabbitMQ.Client e MassTransit 8.5.11, comandos/eventos atuais, recursos de erro do framework, preservação de senhas e listeners. Não prova regras de negócio, Saga, enforcement da NetworkPolicy ou persistência no EKS.
 
-Para repetir as verificações reais do cluster implantado, use `pwsh -File scripts/Test-ClusterBroker.ps1`. Requer `.local/kubeconfig`, `.local/cluster-admin.json`, certificado/CA e acesso ao cluster. O script cria filas com identificador exclusivo, Jobs/Secrets em namespaces temporários e remove esses recursos quando os testes passam. Usa cliente Pika 1.3.2 em imagem Python; precisa de acesso ao registro e ao PyPI. Em caso de falha, preserva os recursos para diagnóstico; revise-os antes de repetir.
+Para repetir as verificações reais do cluster implantado, use `pwsh -File scripts/Test-ClusterBroker.ps1`. Requer `.local/kubeconfig`, `.local/cluster-admin.json` e acesso ao cluster. O script replica a topologia em vhost exclusivo, cria usuários de teste com as mesmas ACLs, Jobs/Secrets em namespaces temporários e remove esses recursos quando os testes passam. Não consome mensagens das filas das aplicações. Usa cliente Pika 1.3.2 em imagem Python; precisa de acesso ao registro e ao PyPI. Em caso de falha, preserva e identifica os recursos para diagnóstico; revise-os antes de repetir.
 
 Para incluir a recriação do Pod e comprovar persistência, use `pwsh -File scripts/Test-ClusterBroker.ps1 -RestartBroker` somente numa janela sem consumidores. Esse parâmetro interrompe as conexões do broker. Ele não exclui o PVC. As credenciais administrativas geradas nesta implantação estão em `.local/cluster-admin.json`; senhas dos serviços em `.local/service-credentials.json`. Nenhum desses arquivos deve ser versionado ou compartilhado integralmente com os serviços.
 
@@ -154,8 +149,8 @@ O job do broker no coordenador GearFlow CD aplica estes manifestos depois da ver
 
 ## Encerrar o laboratório
 
-O EBS de 10 GiB usa `Retain`. Ele contém os dados do RabbitMQ e pode continuar gerando custo depois de excluir o PVC ou cluster. O script `Destroy-Cluster.ps1` bloqueia ao encontrar PVC/PV para exigir essa revisão.
+O EBS de 10 GiB usa `Retain`. Ele contém os dados do RabbitMQ e pode continuar gerando custo depois de excluir o PVC ou cluster. O script `Destroy-Cluster.ps1` bloqueia por padrao, mas oferece `-DiscardRabbitMqData` para remover somente o PVC/PV/EBS comprovado do broker antes do Terraform.
 
-Antes de destruir o cluster, registre o PVC/PV e o volume EBS (o inventário desta implantação está em `.local/rabbitmq-volume.json`). Combine a parada e decida se precisa de backup. Se os dados forem descartáveis, escale o StatefulSet a zero, aguarde o Pod terminar e remova os recursos Kubernetes do broker. O PV retido e o EBS precisam de exclusão explícita, com o volume desanexado e o ID conferido. Só depois execute a destruição Terraform. Não remova volumes por filtro amplo nem presuma que `kubectl delete -k k8s` exclua o disco.
+Para descartar os dados e encerrar: `pwsh -File scripts/Destroy-Cluster.ps1 -Execute -ConfirmClusterName gearflow-fase4 -DiscardRabbitMqData`. Para previa, usar somente `-DiscardRabbitMqData`. O script consulta o PV atual, guarda journal e confirma o EBS exato, sem usar inventario antigo como autorizacao de exclusao. Outros volumes continuam bloqueados. Procedimento e limites em [docs/lifecycle.md](../docs/lifecycle.md).
 
-Referências: [TLS RabbitMQ](https://www.rabbitmq.com/docs/ssl), [permissões RabbitMQ](https://www.rabbitmq.com/docs/access-control), [NetworkPolicy no EKS](https://docs.aws.amazon.com/eks/latest/userguide/cni-network-policy-configure.html).
+Referências: [permissões RabbitMQ](https://www.rabbitmq.com/docs/access-control), [NetworkPolicy no EKS](https://docs.aws.amazon.com/eks/latest/userguide/cni-network-policy-configure.html).

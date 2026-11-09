@@ -1,5 +1,7 @@
 # Preparação do ambiente compartilhado — 04/11/2026
 
+Registro histórico da configuração com TLS. Em 08/11/2026, o grupo optou por AMQP interno sem TLS, porta 5672. O teste compartilhado atual confirmou resposta AMQP sem certificados, preservação de senhas/ACL e painel no loopback após reinício. A implantação dessa mudança no EKS ainda está pendente; detalhes atuais em [Kubernetes](../k8s/README.md).
+
 Status: configuração preparada e validada localmente; nenhum apply/deploy AWS nesta etapa.
 
 ## Imagem

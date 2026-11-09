@@ -18,3 +18,5 @@ crash.log
 *.p12
 __pycache__/
 *.pyc
+**/bin/
+**/obj/

@@ -1,5 +1,7 @@
 # Validação local — 28/10/2026
 
+Registro histórico da topologia provisória. Em 08/11/2026, ela foi substituída pelos contratos dos quatro serviços. O teste atual verifica comandos Billing e sua publicação explícita de falha, em vez de DLX automática de OrderCreated. Veja [mensageria atual](messaging.md).
+
 Executada com Docker Desktop, RabbitMQ do Compose e PowerShell.
 
 ## Resultados

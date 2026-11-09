@@ -33,6 +33,13 @@ jobs:
           "RABBITMQ_USER=gearflow_ci" >> $env:GITHUB_ENV
           "RABBITMQ_PASSWORD=$password" >> $env:GITHUB_ENV
 
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Check topology and permissions against service contracts
+        run: python scripts/cd/sync_topology.py --check
+
       - name: Validate JSON and PowerShell syntax
         run: |
           Get-Content rabbitmq/definitions.json -Raw | ConvertFrom-Json | Out-Null
@@ -51,7 +58,7 @@ jobs:
           kubectl kustomize k8s | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'Invalid Kubernetes manifests.' }
 
-      - name: Test CD access cleanup and topology verification
+      - name: Test CD and broker lifecycle
         run: python -m unittest discover -s tests -v
 
       - name: Start broker and import topology
@@ -60,10 +67,10 @@ jobs:
       - name: Verify repeated startup
         run: ./scripts/Start-Broker.ps1
 
-      - name: Test routing, persistence and dead lettering
+      - name: Test routing, persistence and explicit Billing DLQ
         run: ./scripts/Test-Broker.ps1 -RestartBroker
 
-      - name: Test shared broker TLS and service permissions
+      - name: Test shared broker AMQP and service permissions
         run: ./scripts/Test-SharedBroker.ps1
 
       - name: Diagnostics on failure

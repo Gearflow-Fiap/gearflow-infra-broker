@@ -1,4 +1,4 @@
-"""Atualiza uma instalacao existente; nao cria credenciais nem executa Terraform."""
+"""Prepara ou atualiza o broker, preservando credenciais existentes; sem Terraform."""
 import argparse
 import json
 from pathlib import Path
@@ -8,10 +8,10 @@ import time
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def run(*arguments, capture=True):
-    result = subprocess.run(arguments, cwd=ROOT, text=True, capture_output=capture, check=False)
+def run(*arguments, capture=True, input=None, private=False):
+    result = subprocess.run(arguments, cwd=ROOT, text=True, capture_output=capture, input=input, check=False)
     if result.returncode:
-        if capture and result.stderr:
+        if capture and result.stderr and not private:
             print(result.stderr.strip())
         raise RuntimeError(f"Comando falhou: {arguments[0]} {arguments[1]}")
     return result.stdout if capture else None
@@ -88,14 +88,11 @@ def main():
     def rabbit_json(*command):
         return json.loads(rabbit(*command, "--formatter", "json"))
 
-    run("kubectl", "get", "namespace", args.namespace, "-o", "name")
-    kube("get", "secret", "rabbitmq-credentials", "rabbitmq-tls", "-o", "name")
+    from bootstrap_broker import ensure_bootstrap
+    ensure_bootstrap(args.namespace, run)
     existing = {item["user"]: item for item in rabbit_json("list_users")}
     if any(name not in existing or existing[name]["tags"] for name in expected_users):
         raise RuntimeError("Bootstrap pendente: requer quatro usuarios existentes, sem tags administrativas")
-    run("kubectl", "apply", "--dry-run=server", "-k", "k8s", capture=False)
-    run("kubectl", "apply", "-k", "k8s", capture=False)
-    kube("rollout", "status", "statefulset/rabbitmq", "--timeout=300s", capture=False)
     kube("cp", "rabbitmq/definitions.json", "rabbitmq-0:/tmp/gearflow-definitions.json")
     print(rabbit("import_definitions", "/tmp/gearflow-definitions.json").strip())
     for _ in range(12):

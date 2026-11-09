@@ -17,7 +17,7 @@ spec:
               gearflow.io/rabbitmq-client: "true"
       ports:
         - protocol: TCP
-          port: 5671
+          port: 5672
   egress:
     - to:
         - namespaceSelector:

@@ -1,0 +1,52 @@
+{
+  "vhost": "gearflow",
+  "snapshots": {"os": "65da498", "budget": "944bd13", "operation": "cbcb156", "inventory": "915ef73"},
+  "os": {
+    "queue": "gearflow.os-service",
+    "events_exchange": "gearflow.events",
+    "legacy_bindings": ["budget.generated", "budget.approved", "budget.rejected", "operation.completed"],
+    "published_routes": ["os.created", "os.order-created.v1"],
+    "operation_subscriptions": ["DiagnosticFinished", "DiagnosticFailed", "ExecutionFinished", "OperationCanceled", "OperationCommandRejected"],
+    "inventory_subscriptions": ["StockReserved", "StockInsufficient", "StockReleased", "StockConsumed", "StockReplenished"],
+    "command_queues": ["operation-start-diagnostic", "operation-start-execution", "operation-cancel-operation", "inventory-reserve-stock", "inventory-release-stock", "inventory-consume-stock"]
+  },
+  "budget": {
+    "commands_exchange": "gearflow.commands.v1",
+    "events_exchange": "gearflow.events.v1",
+    "dead_letter_exchange": "gearflow.deadletters.v1",
+    "commands_queue": "gearflow.billing.commands.v1",
+    "events_queue": "gearflow.os.billing.events.v1",
+    "queue_type": "quorum",
+    "commands": ["GenerateBudget", "RequestPayment", "CancelBudget", "RefundPayment"],
+    "event_prefix": "gearflow-budget-service.",
+    "events": ["BudgetGenerated", "BudgetGenerationFailed", "BudgetApproved", "BudgetRejected", "BudgetCanceled", "PaymentRequested", "PaymentConfirmed", "PaymentFailed", "PaymentRefunded"]
+  },
+  "operation": {
+    "namespace": "GearFlow.Contracts.Operation.V1",
+    "commands": {
+      "StartDiagnostic": "operation-start-diagnostic", "StartExecution": "operation-start-execution",
+      "CancelOperation": "operation-cancel-operation", "UpdateOperationVehicle": "operation-update-vehicle",
+      "DeactivateOperation": "operation-deactivate"
+    },
+    "events": {
+      "DiagnosticQueued": "operation.diagnostic-queued", "DiagnosticStarted": "operation.diagnostic-started",
+      "DiagnosticFinished": "operation.diagnostic-finished", "DiagnosticFailed": "operation.diagnostic-failed",
+      "ExecutionAuthorized": "operation.execution-authorized", "ExecutionStarted": "operation.execution-started",
+      "JobExecuted": "operation.job-executed", "ExecutionFinished": "operation.execution-finished",
+      "VehicleUpdated": "operation.vehicle-updated", "OperationDeactivated": "operation.deactivated",
+      "OperationCanceled": "operation.canceled", "OperationCommandRejected": "operation.command-rejected",
+      "OperationCancellationRejected": "operation.cancellation-rejected"
+    },
+    "event_consumers": {}
+  },
+  "inventory": {
+    "namespace": "GearFlow.Contracts",
+    "commands": {"ReserveStock": "inventory-reserve-stock", "ReleaseStock": "inventory-release-stock", "ConsumeStock": "inventory-consume-stock"},
+    "events": {
+      "StockReserved": "inventory.stock-reserved", "StockInsufficient": "inventory.stock-insufficient",
+      "StockReleased": "inventory.stock-released", "StockConsumed": "inventory.stock-consumed",
+      "StockReplenished": "inventory.stock-replenished", "LowStockAlert": "inventory.low-stock-alert"
+    },
+    "event_consumers": {"LowStockAlert": "inventory-low-stock-alert-email", "StockInsufficient": "inventory-stock-insufficient-email"}
+  }
+}

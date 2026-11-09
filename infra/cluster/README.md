@@ -111,6 +111,8 @@ Para excluir de fato, depois de revisar a previa e combinar a parada dos servico
 pwsh -File scripts/Destroy-Cluster.ps1 -Execute -ConfirmClusterName gearflow-fase4
 ```
 
-O script valida conta, nome/regiao, recursos esperados no state e consulta o cluster por kubeconfig isolado. Bloqueia se encontrar PVCs, PVs, Services LoadBalancer ou Ingresses; nao apaga dados de aplicacoes automaticamente. Sem acesso Kubernetes, tambem bloqueia. Se o cluster nao existir (por exemplo, criacao parcial), ainda pode planejar/remover recursos remanescentes do state.
+O script valida conta, nome/regiao, recursos esperados no state e consulta o cluster por kubeconfig isolado. Por padrao bloqueia se encontrar PVCs, PVs, Services LoadBalancer ou Ingresses; nao apaga dados sem descarte explicito. Sem acesso Kubernetes, tambem bloqueia. Se o cluster nao existir (por exemplo, criacao parcial), ainda pode planejar/remover recursos remanescentes do state.
+
+Para descartar explicitamente o RabbitMQ e seu EBS antes do Terraform, acrescentar -DiscardRabbitMqData. A previa dessa limpeza e `pwsh -File scripts/Destroy-Cluster.ps1 -DiscardRabbitMqData`; a execucao e `pwsh -File scripts/Destroy-Cluster.ps1 -Execute -ConfirmClusterName gearflow-fase4 -DiscardRabbitMqData`. Outros volumes/servicos continuam bloqueados. O journal privado permite retomar falhas sem depender de PVC ja excluido. Veja ../../docs/lifecycle.md.
 
 O plano de destruicao fica em .local/destroy/, ignorado pelo Git; o script gera um novo a cada execucao. Ele nao exclui roles preexistentes, credenciais, state local, nem recursos externos ao state. Volumes retidos cujo PVC/PV ja foi removido precisam ser identificados/revisados diretamente na AWS; nao ha garantia de zerar a conta inteira. Preserve o state se uma exclusao falhar e repita somente apos diagnosticar.

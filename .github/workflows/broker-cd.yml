@@ -134,7 +134,7 @@ jobs:
       - name: Configure isolated Kubernetes context
         run: aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION" --kubeconfig "$KUBECONFIG" --alias gearflow-cd
 
-      - name: Deploy and verify existing broker
+      - name: Bootstrap, deploy and verify broker
         run: python scripts/cd/deploy_broker.py --cluster "$EKS_CLUSTER_NAME" --region "$AWS_REGION" --namespace "$K8S_NAMESPACE"
 
       - name: Remove only the temporary executor access
