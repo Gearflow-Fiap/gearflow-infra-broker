@@ -2,6 +2,12 @@
 
 Infraestrutura compartilhada da Fase 4: cluster EKS e RabbitMQ para OS, Budget, Operation e Inventory.
 
+O workflow **GearFlow CD** implanta somente o broker no EKS existente `gearflow`,
+em `us-east-1`, namespace `messaging`. Ele detecta Auto Mode e nao executa
+Terraform nem altera o endpoint do cluster. Configuracao e ordem de execucao:
+[deploy do broker](docs/cd.md). O workflow separado **Cluster CD** continua sendo
+uma operacao explicita de infraestrutura para o ambiente Terraform anterior.
+
 Para os integrantes das aplicações: [guia de comunicação entre microsserviços e conexão ao RabbitMQ](docs/GUIA-INTEGRACAO-RABBITMQ.md), com fluxo, filas, formatos de mensagens, credenciais e exemplos de configuração Kubernetes.
 
 ## Organizacao do cluster compartilhado

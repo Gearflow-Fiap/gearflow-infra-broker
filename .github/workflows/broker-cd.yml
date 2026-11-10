@@ -6,22 +6,6 @@ on:
     types: [completed]
     branches: [main]
   workflow_dispatch:
-    inputs:
-      operation:
-        description: 'plan para revisar; apply para aplicar um plano revisado'
-        type: choice
-        options: [plan, apply]
-        default: plan
-      expected_plan_sha:
-        description: 'Identificador SHA256 exibido pelo plan anterior (obrigatorio no apply)'
-        type: string
-      confirm_cluster:
-        description: 'No apply, digitar gearflow-fase4'
-        type: string
-      allow_destructive:
-        description: 'Permitir exclusoes/substituicoes explicitamente revisadas'
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -55,38 +39,20 @@ jobs:
               core.setFailed('Execute Broker CI com sucesso para este commit da main antes do deploy.');
             }
 
-  infrastructure:
-    needs: verify
-    uses: ./.github/workflows/cluster-cd.yml
-    with:
-      ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-      operation: ${{ inputs.operation || 'plan' }}
-      expected_plan_sha: ${{ inputs.expected_plan_sha || '' }}
-      confirm_cluster: ${{ inputs.confirm_cluster || '' }}
-      allow_destructive: ${{ inputs.allow_destructive || false }}
-    secrets:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
-      TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
-      TF_CLUSTER_CONFIG_JSON: ${{ secrets.TF_CLUSTER_CONFIG_JSON }}
-
   deploy:
-    needs: infrastructure
-    if: needs.infrastructure.outputs.changes == 'false' || needs.infrastructure.outputs.applied == 'true'
+    needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      AWS_REGION: ${{ vars.AWS_REGION }}
-      EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
-      K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME || 'gearflow' }}
+      K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'messaging' }}
       AWS_PAGER: ''
     steps:
       - name: Initialize isolated runner files
         shell: bash
         run: |
           echo "KUBECONFIG=$RUNNER_TEMP/gearflow-kubeconfig" >> "$GITHUB_ENV"
-          echo "ACCESS_LEASE=$RUNNER_TEMP/endpoint-access.json" >> "$GITHUB_ENV"
 
       - name: Checkout exact validated commit
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -98,38 +64,29 @@ jobs:
         shell: bash
         run: |
           test "$AWS_REGION" = us-east-1
-          test "$EKS_CLUSTER_NAME" = gearflow-fase4
+          test "$EKS_CLUSTER_NAME" = gearflow
           test "$K8S_NAMESPACE" = messaging
 
       - name: Authenticate using temporary Academy credentials
-        uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c # v4
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: '531827661311'
+          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
           unset-current-credentials: true
           mask-aws-account-id: true
+
+      - name: Read cluster Kubernetes version
+        run: |
+          version=$(aws eks describe-cluster --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION" --query cluster.version --output text)
+          echo "KUBECTL_VERSION=v$version.0" >> "$GITHUB_ENV"
 
       - name: Install compatible kubectl
         uses: azure/setup-kubectl@c0c8b32d33a5244f1e5947304550403b63930415 # v4
         with:
-          version: v1.35.9
-
-      - name: Prepare endpoint recovery file
-        run: python scripts/cd/cluster_access.py prepare --cluster "$EKS_CLUSTER_NAME" --region "$AWS_REGION" --lease "$ACCESS_LEASE"
-
-      - name: Save recovery file before changing endpoint
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: endpoint-access-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ env.ACCESS_LEASE }}
-          retention-days: 1
-          if-no-files-found: error
-
-      - name: Allow this executor IP temporarily
-        run: python scripts/cd/cluster_access.py open --cluster "$EKS_CLUSTER_NAME" --region "$AWS_REGION" --lease "$ACCESS_LEASE"
+          version: ${{ env.KUBECTL_VERSION }}
 
       - name: Configure isolated Kubernetes context
         run: aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION" --kubeconfig "$KUBECONFIG" --alias gearflow-cd
@@ -137,19 +94,8 @@ jobs:
       - name: Bootstrap, deploy and verify broker
         run: python scripts/cd/deploy_broker.py --cluster "$EKS_CLUSTER_NAME" --region "$AWS_REGION" --namespace "$K8S_NAMESPACE"
 
-      - name: Remove only the temporary executor access
-        if: always()
+      - name: Diagnostics on failure
+        if: failure()
         run: |
-          if [ -f "$ACCESS_LEASE" ]; then
-            python scripts/cd/cluster_access.py close --cluster "$EKS_CLUSTER_NAME" --region "$AWS_REGION" --lease "$ACCESS_LEASE"
-          fi
-
-      - name: Update recovery file after cleanup
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: endpoint-access-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ env.ACCESS_LEASE }}
-          retention-days: 1
-          if-no-files-found: ignore
-          overwrite: true
+          kubectl get pods,pvc -n "$K8S_NAMESPACE" || true
+          kubectl get events -n "$K8S_NAMESPACE" --sort-by=.lastTimestamp | tail -40 || true
