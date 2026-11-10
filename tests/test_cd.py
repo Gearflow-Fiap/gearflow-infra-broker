@@ -7,7 +7,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts/cd"))
 from cluster_access import ClusterAccess
-from deploy_broker import topology_matches
+from deploy_broker import topology_matches, manifest_directory
 from terraform_cluster import approve, fingerprint, sanitized, validate_config
 
 
@@ -97,6 +97,15 @@ class AccessTests(unittest.TestCase):
         self.access.info["resourcesVpcConfig"]["publicAccessCidrs"] = ["0.0.0.0/0"]
         with self.assertRaises(RuntimeError):
             self.access.prepare("203.0.113.20/32")
+
+
+class StorageProfileTests(unittest.TestCase):
+    def test_auto_mode_uses_managed_ebs(self):
+        self.assertEqual(manifest_directory({"computeConfig": {"enabled": True}}), "k8s-auto")
+
+    def test_existing_managed_node_groups_keep_standard_driver(self):
+        self.assertEqual(manifest_directory({}), "k8s")
+        self.assertEqual(manifest_directory({"computeConfig": {"enabled": False}}), "k8s")
 
 
 class TopologyTests(unittest.TestCase):

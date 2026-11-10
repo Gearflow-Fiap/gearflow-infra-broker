@@ -1,71 +1,86 @@
-# Deploy continuo do RabbitMQ — AWS Academy
+# Deploy do RabbitMQ no EKS existente
 
-O job de broker do coordenador GearFlow CD atualiza o RabbitMQ no cluster existente. Esse job nao executa Terraform, nao cria roles/cluster e nao recebe a senha administrativa. Antes dele, o workflow reutilizavel Cluster CD gera o plano de infraestrutura e, quando aprovado explicitamente, aplica as mudancas usando state HCP. Veja infra-cd.md e hcp-state.md.
+O workflow **GearFlow CD** (`broker-cd.yml`) instala e atualiza somente o broker.
+Ele nao cria/substitui cluster, nao chama Terraform e nao usa TF_API_TOKEN nem
+TF_CLUSTER_CONFIG_JSON. O fluxo separado **Cluster CD** continua disponivel para
+operacoes explicitas do ambiente Terraform anterior; nao o executar para subir
+o broker no cluster atual.
 
-## Configuracao na organizacao
+## Configuracao do repositorio
 
-Liberar o acesso abaixo somente aos repositorios que executarao deploy:
+Em Settings > Secrets and variables > Actions, cadastrar Repository variables:
 
-| Tipo | Nome | Valor/origem |
-| --- | --- | --- |
-| Variable | AWS_REGION | us-east-1 |
-| Variable | EKS_CLUSTER_NAME | gearflow-fase4 |
-| Variable | K8S_NAMESPACE | messaging |
-| Secret | AWS_ACCESS_KEY_ID | aws_access_key_id da sessao Academy |
-| Secret | AWS_SECRET_ACCESS_KEY | aws_secret_access_key da mesma sessao |
-| Secret | AWS_SESSION_TOKEN | aws_session_token completo da mesma sessao |
+| Nome | Valor |
+| --- | --- |
+| EKS_CLUSTER_NAME | gearflow |
+| AWS_REGION | us-east-1 |
+| K8S_NAMESPACE | messaging |
+| AWS_ACCOUNT_ID | Opcional: ID da conta atual, para restringir a autenticacao |
 
-Atualizar os tres secrets juntos quando a sessao expirar. Nao copiar o perfil local academy para o runner, nem versionar credenciais. O workflow verifica a conta Academy atual pelo allowed-account-ids; se a conta do laboratorio mudar, revisar esse limite explicitamente.
+Variaveis de repositorio sobrescrevem valores herdados da organizacao. Remover
+ou atualizar valores antigos como gearflow-fase4. O workflow valida o destino
+gearflow/us-east-1/messaging antes de aplicar recursos. Ao trocar de ambiente,
+revisar essa validacao explicitamente. AWS_ACCOUNT_ID nao e segredo, mas deve
+corresponder a conta das credenciais; nao reaproveitar o ID do laboratorio antigo.
 
-## Disparo e seguranca do codigo
+Secrets necessarios: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY e AWS_SESSION_TOKEN,
+todos da mesma sessao Academy e conta do cluster gearflow. O workflow nao recebe
+senha administrativa RabbitMQ: o bootstrap cria credenciais individuais aleatorias
+no Kubernetes e preserva as ja existentes.
 
-- Automatico depois de Broker CI concluir com sucesso em um push na main deste repositorio.
-- Manual: Actions > GearFlow CD > Run workflow, selecionando main. O coordenador exige Broker CI bem-sucedido para o mesmo SHA antes de prosseguir e valida o plano de infraestrutura antes do broker.
-- PRs e forks nao executam CD nem recebem credenciais AWS. O checkout automatico usa exatamente o SHA aprovado pelo CI, sem acompanhar uma main que possa ter avancado.
-- Actions fixadas por SHA; token GitHub com contents:read e actions:read; infraestrutura e broker serializados sob o mesmo coordenador, com cancel-in-progress=false.
-- Commits na homolog passam por PR/merge para main antes do CD. O workflow precisa estar publicado na main para os disparos funcionarem.
+## Pre-requisitos de acesso
 
-## Acesso ao EKS
+Cluster ACTIVE, nodes disponiveis e role do Actions com acesso Kubernetes para
+aplicar namespace, StorageClass, Secrets, StatefulSet e NetworkPolicy. Os nodes
+precisam conseguir baixar a imagem RabbitMQ do Docker Hub.
 
-O runner e ubuntu-latest hospedado pelo GitHub. Nao criaremos um runner publico na maquina do operador nem outra EC2.
+O endpoint Kubernetes deve ser alcancavel pelo runner GitHub. O CD nao altera
+CIDRs nem habilita endpoints publicos; um endpoint privado ou bloqueado exige
+um runner/rede com acesso previamente configurado. O helper cluster_access.py
+permanece disponivel para procedimentos antigos, mas nao e chamado por este CD.
+O kubectl e escolhido pela versao real do cluster, sem versao fixa antiga.
 
-1. Prepara arquivo com o IPv4 /32 do runner e identidade/data de criacao do cluster, sem guardar CIDRs dos operadores nem credenciais.
-2. Publica esse arquivo como artifact antes de alterar o endpoint.
-3. Adiciona somente o /32 necessario, preservando as regras existentes e o endpoint privado. Se uma regra existente ja permitir a origem, nao assume propriedade dela.
-4. Aguarda a atualizacao AWS e configura kubeconfig temporario.
-5. Executa o deploy e, num passo always(), remove somente a regra temporaria que adicionou.
-6. Atualiza o artifact com o resultado da limpeza. Retencao de um dia; nenhum state/plan Terraform, kubeconfig ou segredo e enviado.
+## Executar
 
-Permissoes AWS utilizadas: sts:GetCallerIdentity, eks:DescribeCluster, eks:UpdateClusterConfig e eks:DescribeUpdate, alem do acesso Kubernetes da identidade Academy que criou o cluster. A simulacao IAM local retornou allowed para as chamadas EKS. Nao criamos uma nova role nem configuramos GitHub OIDC no Academy.
+1. Merge do PR na main.
+2. Aguardar **Broker CI** aprovado para o mesmo commit da main.
+3. O **GearFlow CD** inicia automaticamente apos esse CI. Tambem pode executar
+   Actions > GearFlow CD > Run workflow > main. Nao ha campos plan/apply.
+4. Aguardar o job deploy aprovado: bootstrap, rollout, topologia, permissoes e
+   saude do broker sao verificados. Falhas exibem pods, PVCs e eventos.
+5. Depois executar **Billing Academy EKS** no repositorio budget-service.
 
-Nao executar Terraform ou alterar os CIDRs manualmente durante o CD. A alteracao temporaria pode aparecer como drift enquanto o job estiver rodando; nao adicionamos ignore_changes para esconder drift. O grupo de concorrencia vale para este repositorio: nao copiar essa abertura de endpoint para varios repositorios executando simultaneamente sem coordenacao adicional.
+PRs/forks nao recebem credenciais nem disparam CD. O checkout usa exatamente o
+commit aprovado pelo CI. Criar o PR nao modifica recursos AWS.
 
-## O que o deploy faz
+## Armazenamento
 
-O bootstrap faz parte do deploy: cria Secrets de credenciais/admin e usuarios ausentes em cluster vazio, com senhas aleatorias, e preserva/verifica credenciais existentes. Usa AMQP interno na porta 5672 sem TLS. Apos rollout e verificacao das credenciais, remove rabbitmq-tls/rabbitmq-ca obsoletos, se existirem. Nao exige certificados nem senha administrativa no GitHub. A instalacao antiga precisa de uma migracao local das senhas para Secrets individuais antes do primeiro novo CD. Veja lifecycle.md. Senhas divergentes exigem revisao; nao ha reset automatico.
+O deploy consulta computeConfig.enabled. Auto Mode usa k8s-auto,
+StorageClass gearflow-broker-gp3-auto e ebs.csi.eks.amazonaws.com, com topologia
+restrita a nodes Auto Mode. Nao requer instalar o driver EBS convencional.
+O cluster deve ter o armazenamento Auto Mode habilitado e suas permissoes IAM.
+Clusters convencionais usam k8s, gearflow-broker-gp3 e ebs.csi.aws.com, que exige
+o add-on EBS CSI e permissoes IAM correspondentes.
 
-scripts/cd/deploy_broker.py confere o endpoint do contexto, executa bootstrap_broker.py, valida/aplica k8s/, aguarda o StatefulSet, importa definitions.json e verifica filas/exchanges (nomes, durabilidade, auto-delete, argumentos declarados e tipo de exchange), bindings e policies. Aplica e confere as permissoes dos quatro usuarios e verifica processo/alarmes do broker.
+A instalacao preserva o disco gp3 de 10 GiB e a politica Retain do repo. Nenhum
+PVC, fila ou volume e apagado/migrado automaticamente. Se existir um StatefulSet
+com outra StorageClass, interromper e planejar a migracao: esse campo e imutavel.
 
-Uma mudanca de imagem/configuracao pode recriar o unico Pod e interromper conexoes. Nao ha HA. O pipeline nao faz rollback automatico de topologia: isso poderia perder mensagens ou alterar dados. Recursos removidos de definitions.json nao sao excluidos automaticamente. Alteracoes incompativeis de filas exigem migracao planejada, mesmo depois da etapa 4.
+## Contrato com Billing
 
-O teste AMQP completo e de persistencia continua em scripts/Test-ClusterBroker.ps1. Ele nao roda automaticamente em cada CD porque cria clientes de teste e pode interromper conexoes quando recebe -RestartBroker. Health checks e verificacao declarativa do CD nao substituem integracao com os microsservicos.
+- Service rabbitmq.messaging.svc.cluster.local, AMQP interno 5672 sem TLS.
+- Vhost gearflow, usuario gearflow_budget, filas quorum conforme definitions.json.
+- Secret messaging/rabbitmq-budget-credentials: username/password do Billing.
+- Namespace cliente: label gearflow.io/messaging-access=true.
+- Pods clientes: label gearflow.io/rabbitmq-client=true.
 
-## Falha e recuperacao do IP temporario
+O Billing copia apenas sua credencial para seu namespace. A topologia, usuarios,
+permissoes e disco pertencem ao infra-broker. O RabbitMQ antigo no namespace
+gearflow e suas mensagens nao sao removidos por este deploy; revisar drenagem
+antes de exclui-lo. Filas classic antigas nao viram quorum por mudanca de config.
 
-always() tenta limpar mesmo quando o deploy falha, mas encerramento abrupto do runner, cancelamento forcado ou expiracao das credenciais pode impedir a limpeza. O workflow nao garante revogacao nessas situacoes. Baixar o artifact endpoint-access do job afetado e usar uma sessao Academy renovada, antes que expire a retencao:
+## Limites
 
-```powershell
-$env:AWS_PROFILE='academy'
-python scripts/cd/cluster_access.py close --cluster gearflow-fase4 --region us-east-1 --lease '.local/cd/endpoint-access.json'
-```
-
-Use o arquivo do job afetado, nao um arquivo antigo de outra execucao. O script preserva regras dos operadores e recusa alterar um cluster recriado com a mesma denominacao. Se a lista restante ficar vazia ou houver regra /0, ele exige revisao manual. Nao substituir a lista por 0.0.0.0/0 para resolver problemas de acesso.
-
-## Validacao e pendencia de publicacao
-
-- 20 testes locais passaram: preparacao sem mutacao, limpeza idempotente, preservacao de regras existentes/novas, falha parcial de API, cluster recriado, recusa de /0/lista vazia, topologia divergente e aprovacao Terraform.
-- Os quatro workflows passaram por parser YAML. O CI passa a executar os testes Python sem credenciais AWS.
-- O script de deploy foi executado no EKS atual e passou: server dry-run, apply, rollout, importacao e verificacao de topologia/permissoes e health checks. O teste local de acesso aproveitou o IP ja autorizado, sem adicionar/remover CIDR do operador.
-- Ainda falta publicar o workflow na main e observar uma execucao real do GitHub. Isso comprovara os secrets/variables da organizacao e a abertura/remocao do IP novo do runner em runtime. Simulacao IAM e teste local nao comprovam essa etapa remota.
-
-Referencias: [endpoint EKS](https://docs.aws.amazon.com/eks/latest/APIReference/API_UpdateClusterConfig.html), [credenciais temporarias no Actions](https://github.com/aws-actions/configure-aws-credentials), [secrets de organizacao](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets).
+Uma replica, sem alta disponibilidade e sem migracao entre contas/clusters.
+Alterar credenciais/variaveis nao transfere dados existentes. Os recursos
+provisionados consomem creditos Academy enquanto existirem.

@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../k8s
+patches:
+  - target:
+      kind: StorageClass
+      name: gearflow-broker-gp3
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: gearflow-broker-gp3-auto
+      - op: replace
+        path: /provisioner
+        value: ebs.csi.eks.amazonaws.com
+      - op: add
+        path: /allowedTopologies
+        value:
+          - matchLabelExpressions:
+              - key: eks.amazonaws.com/compute-type
+                values: [auto]
+  - target:
+      kind: StatefulSet
+      name: rabbitmq
+    patch: |-
+      - op: replace
+        path: /spec/volumeClaimTemplates/0/spec/storageClassName
+        value: gearflow-broker-gp3-auto

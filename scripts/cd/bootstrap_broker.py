@@ -24,7 +24,7 @@ def password_matches(user, password):
     return len(value) > 4 and hmac.compare_digest(value[4:], algorithm(value[:4] + password.encode()).digest())
 
 
-def ensure_bootstrap(namespace, run):
+def ensure_bootstrap(namespace, run, manifest_dir="k8s"):
     local = ROOT / ".local"
     local.mkdir(exist_ok=True)
     backup = local / "credentials-backups" / secrets.token_hex(8)
@@ -68,8 +68,8 @@ def ensure_bootstrap(namespace, run):
         create_secret("rabbitmq-credentials", admin)
     if not admin.get("username") or not admin.get("password"):
         raise RuntimeError("Secret administrativo incompleto; nao sobrescrever automaticamente")
-    run("kubectl", "apply", "--dry-run=server", "-k", "k8s", capture=False)
-    run("kubectl", "apply", "-k", "k8s", capture=False)
+    run("kubectl", "apply", "--dry-run=server", "-k", manifest_dir, capture=False)
+    run("kubectl", "apply", "-k", manifest_dir, capture=False)
     kube("rollout", "status", "statefulset/rabbitmq", "--timeout=360s", capture=False)
 
     # O tunel e local e encerrado pelo proprio processo; senhas nunca sao argumentos CLI.

@@ -23,6 +23,10 @@ def table(value):
     return {key: table(item) if kind == "table" else item for key, kind, item in (value or [])}
 
 
+def manifest_directory(cluster):
+    return "k8s-auto" if cluster.get("computeConfig", {}).get("enabled", False) else "k8s"
+
+
 def topology_matches(expected, actual):
     """Compara recursos declarados; recursos extras sao preservados."""
     for kind in ("exchanges", "queues"):
@@ -89,7 +93,7 @@ def main():
         return json.loads(rabbit(*command, "--formatter", "json"))
 
     from bootstrap_broker import ensure_bootstrap
-    ensure_bootstrap(args.namespace, run)
+    ensure_bootstrap(args.namespace, run, manifest_directory(cluster))
     existing = {item["user"]: item for item in rabbit_json("list_users")}
     if any(name not in existing or existing[name]["tags"] for name in expected_users):
         raise RuntimeError("Bootstrap pendente: requer quatro usuarios existentes, sem tags administrativas")
