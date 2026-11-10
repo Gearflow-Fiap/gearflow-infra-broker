@@ -2,6 +2,8 @@
 
 **Referência:** código dos serviços consultado em 08/11/2026 e topologia atual do `gearflow-infra-broker`.
 
+Budget revisto em 09/11/2026 na `main` remota, commit `f787a43`: contratos sem alterações em relação a `944bd13`. Os novos overlays Academy usam broker próprio; as diferenças de configuração estão registradas na [revisão do Budget](BUDGET-CONTRATO-REVISAO-2026-11-09.md).
+
 **Público:** integrantes responsáveis por OS, Budget, Operation e Inventory.
 
 Este guia explica a integração existente e como configurar cada serviço para o broker compartilhado. A infraestrutura foi adaptada e testada localmente; o deploy dessa configuração no EKS e o teste conjunto das aplicações ainda estão pendentes. As pendências de negócio estão identificadas na seção 9.
@@ -313,6 +315,8 @@ A label `gearflow.io/rabbitmq-client: "true"` deve estar no **template de Pods**
 | Inventory | `RabbitMq__Tls=false`, porta 5672, host/vhost comuns. Remover a configuração de CA e o volume/mount obrigatório `rabbitmq-ca` do Deployment. Manter os nomes de eventos e endpoints já configurados no MassTransit. |
 
 O Budget deve usar quorum ao conectar a um broker preparado pelas definições atuais do infra-broker, inclusive no Compose deste repositório, porque suas três filas seguem o manifesto Kubernetes do serviço. O padrão local de seu código é classic; uma declaração com tipo diferente falha. A infraestrutura continua com um único RabbitMQ, sem alta disponibilidade.
+
+Nos overlays Academy recentes do Budget, a porta é 5672 e TLS está desligado, mas o deploy ainda cria um RabbitMQ separado e usa filas classic. O workflow também fornece usuário `gearflow` e aguarda esse StatefulSet local. Para usar o broker compartilhado, a equipe deve adequar esses recursos/etapas, configurar usuário `gearflow_budget`, vhost `gearflow` e filas quorum. O overlay define o ambiente inteiro como Development; isso é uma configuração de demonstração do Budget, não uma exigência do broker compartilhado.
 
 ### Desenvolvimento fora do cluster
 

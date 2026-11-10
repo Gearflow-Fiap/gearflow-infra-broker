@@ -1,6 +1,6 @@
 {
   "vhost": "gearflow",
-  "snapshots": {"os": "65da498", "budget": "944bd13", "operation": "cbcb156", "inventory": "915ef73"},
+  "snapshots": {"os": "65da498", "budget": "f787a43", "operation": "cbcb156", "inventory": "915ef73"},
   "os": {
     "queue": "gearflow.os-service",
     "events_exchange": "gearflow.events",

@@ -4,7 +4,7 @@ O broker foi adaptado ao codigo existente dos servicos. Regras da Saga e tratame
 
 ## Fonte e manutencao
 
-`rabbitmq/contracts.json` registra os nomes extraidos de OS `65da498`, Budget `944bd13`, Operation `cbcb156` e Inventory `915ef73`. `scripts/cd/sync_topology.py` gera `definitions.json` e `service-permissions.json` a partir desse catalogo. O CI executa `--check` para impedir divergencia entre catalogo e arquivos aplicados.
+`rabbitmq/contracts.json` registra os nomes extraidos de OS `65da498`, Budget `f787a43`, Operation `cbcb156` e Inventory `915ef73`. Budget foi revisto em 09/11/2026: codigo-fonte e testes identicos ao snapshot anterior `944bd13`; mudaram somente deploy/infraestrutura/documentacao. Veja [revisao do Budget](BUDGET-CONTRATO-REVISAO-2026-11-09.md). `scripts/cd/sync_topology.py` gera `definitions.json` e `service-permissions.json` a partir desse catalogo. O CI executa `--check` para impedir divergencia entre catalogo e arquivos aplicados.
 
 ```powershell
 python scripts/cd/sync_topology.py
