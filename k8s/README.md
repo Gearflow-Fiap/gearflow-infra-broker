@@ -16,7 +16,7 @@ O Compose local usa 5672 e painel 15672 limitados ao loopback da máquina. No Ku
 
 ## Pré-requisitos antes do deploy
 
-1. Aplicar um plano Terraform atualizado. O cluster utilizado tem EKS 1.35, dois workers e addon VPC CNI com `enableNetworkPolicy=true`.
+1. Usar o cluster existente `gearflow`; o CD do broker n�o executa Terraform. A evid�ncia hist�rica abaixo refere-se ao cluster convencional anterior.
 2. Confirmar nodes `Ready`, driver EBS ativo e teste de escrita/leitura em PVC.
 3. Confirmar VPC CNI compatível com NetworkPolicy e agente `aws-network-policy-agent` funcionando. O Terraform configura o addon antes dos workers. O modo padrão pode permitir tráfego brevemente durante a inicialização do Pod; autenticação continua obrigatória. Não habilitar modo strict globalmente sem preparar políticas para os demais workloads.
 4. Confirmar contexto e permissões Kubernetes. Namespace/labels não substituem RBAC; somente operadores autorizados devem poder conceder labels de acesso, alterar políticas, executar comandos ou fazer port-forward no broker.
@@ -154,3 +154,11 @@ O EBS de 10 GiB usa `Retain`. Ele contém os dados do RabbitMQ e pode continuar 
 Para descartar os dados e encerrar: `pwsh -File scripts/Destroy-Cluster.ps1 -Execute -ConfirmClusterName gearflow-fase4 -DiscardRabbitMqData`. Para previa, usar somente `-DiscardRabbitMqData`. O script consulta o PV atual, guarda journal e confirma o EBS exato, sem usar inventario antigo como autorizacao de exclusao. Outros volumes continuam bloqueados. Procedimento e limites em [docs/lifecycle.md](../docs/lifecycle.md).
 
 Referências: [permissões RabbitMQ](https://www.rabbitmq.com/docs/access-control), [NetworkPolicy no EKS](https://docs.aws.amazon.com/eks/latest/userguide/cni-network-policy-configure.html).
+# EKS existente e Auto Mode
+
+Para instalar no cluster `gearflow`, seguir [o CD do broker](../docs/cd.md).
+O deploy seleciona `k8s-auto` quando `computeConfig.enabled=true` e usa o
+provisionador `ebs.csi.eks.amazonaws.com`. O manifesto base continua usando o
+driver convencional para clusters com managed node groups. Os dois perfis usam
+StorageClasses distintas para evitar alterar um provisionador imutavel.
+O overlay nao migra nem exclui volumes ja existentes.

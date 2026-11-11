@@ -90,6 +90,12 @@ class BootstrapTests(unittest.TestCase):
 
     def bootstrap(self): bootstrap_broker.ensure_bootstrap("messaging", self.fake.run)
 
+    def test_auto_mode_profile_used_for_validation_and_apply(self):
+        bootstrap_broker.ensure_bootstrap("messaging", self.fake.run, "k8s-auto")
+        applies = [args for args in self.fake.private_arguments if "apply" in args and "-k" in args]
+        self.assertEqual(len(applies), 2)
+        self.assertTrue(all(args[args.index("-k") + 1] == "k8s-auto" for args in applies))
+
     def test_fresh_install_and_repeat_preserve_all_passwords(self):
         self.bootstrap()
         original = copy.deepcopy(self.fake.secrets)
